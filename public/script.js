@@ -11,6 +11,7 @@
       this.subscriptions = new Map();
       this.initConnection();
     }
+    
 
     initConnection() {
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -369,13 +370,23 @@
     });
   });
 
+ // [방 코드 숫자 4자리 실시간 제한]
+  const $joinCodeInput = document.getElementById("joinRoomCodeInput");
+  if ($joinCodeInput) {
+    $joinCodeInput.addEventListener("input", function () {
+      this.value = this.value.replace(/[^0-9]/g, "").slice(0, 4);
+    });
+  }
+
+  // [서버 검증 방 입장 - 숫자 4자리 완성 검증]
   document.getElementById("btnJoinRoomSubmit").addEventListener("click", () => {
     state.nickname = document.getElementById("nicknameInput").value.trim() || "참가자";
     document.getElementById("myNickDisplay").textContent = state.nickname;
 
     const inputCode = document.getElementById("joinRoomCodeInput").value.trim();
-    if (!inputCode) {
-      alert("입장할 방 코드 4자리를 입력해주세요!");
+    if (!inputCode || inputCode.length !== 4 || !/^\d{4}$/.test(inputCode)) {
+      alert("입장할 방 코드는 숫자 4자리로 정확히 입력해주세요!");
+      if ($joinCodeInput) $joinCodeInput.focus();
       return;
     }
 

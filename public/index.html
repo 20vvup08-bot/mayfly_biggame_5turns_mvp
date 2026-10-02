@@ -106,7 +106,7 @@
           <!-- 방 참여하기 패널 -->
           <div id="panelJoinRoom" style="display: none; text-align: left; padding: 14px; background: rgba(0,0,0,0.25); border-radius: 12px; border: 1px solid var(--line);">
             <div style="font-size: 13px; font-weight: 700; margin-bottom: 4px;">방 코드 입력</div>
-            <input type="text" id="joinRoomCodeInput" class="chat-input" placeholder="방 코드 4자리 (예: 7482)" style="width: 100%; margin-bottom: 10px; font-weight: 800; letter-spacing: 2px;">
+           <input type="text" id="joinRoomCodeInput" class="chat-input" placeholder="숫자 4자리 (예: 7482)" maxlength="4" inputmode="numeric" pattern="[0-9]*" style="width: 100%; margin-bottom: 10px; font-weight: 800; letter-spacing: 4px; text-align: center;">
             <button class="btn btn-success" id="btnJoinRoomSubmit" style="width: 100%; justify-content: center; padding: 11px;">
               ➔ 해당 방 입장하기
             </button>
