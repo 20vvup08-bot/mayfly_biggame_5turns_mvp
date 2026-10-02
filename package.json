@@ -1,0 +1,14 @@
+{
+  "name": "mayfly-websocket-messagebroker",
+  "version": "1.0.0",
+  "description": "Mayfly Card Game - WebSocket & Message Broker Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  },
+  "author": "박찬우",
+  "license": "ISC"
+}
