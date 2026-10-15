@@ -712,3 +712,87 @@ body {
 .cd-row .k { color: var(--ink-faint); }
 .cd-effect { color: var(--accent-soft); font-weight: 800; font-size: 14px; }
 .cd-error { color: var(--danger); font-size: 13.5px; text-align: center; padding: 10px 0; }
+/* 방 목록 카드 스타일 */
+.room-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(139, 124, 246, 0.1);
+}
+/* 방 목록 카드 스타일 */
+.room-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(139, 124, 246, 0.1);
+}
+/* 방 목록 카드 스타일 */
+.room-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(139, 124, 246, 0.1);
+}
+/* 방 목록 카드 스타일 */
+.room-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(139, 124, 246, 0.1);
+}/* 방 목록 카드 스타일 */
+.room-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.room-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background: rgba(139, 124, 246, 0.1);
+}

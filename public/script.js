@@ -1,43 +1,292 @@
 (function () {
   "use strict";
 
-  // =========================================================
-  // 1. WebSocket & 메시지 브로커 클라이언트
-  // =========================================================
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+
+  // 1. 기본 카드 마스터 덱 20장
+  var MASTER_VALUE_FULL = [
+    { id: "v01", type: "VALUE", name: "정직", category: "윤리", description: "말과 행동이 일치하는 삶을 가장 소중히 여긴다.", question: "거짓말을 해야만 하는 상황이라면 어떻게 하시겠어요?" },
+    { id: "v02", type: "VALUE", name: "도전", category: "성취", description: "새로운 것을 시도하는 데서 삶의 의미를 찾는다.", question: "최근에 도전해본 가장 큰 일은 무엇이었나요?" },
+    { id: "v03", type: "VALUE", name: "가족", category: "관계", description: "가까운 사람들과의 유대를 삶의 최우선에 둔다.", question: "가족과 함께한 순간 중 가장 소중한 기억은?" },
+    { id: "v04", type: "VALUE", name: "안정", category: "안정", description: "예측 가능하고 변화가 적은 삶을 선호한다.", question: "안정과 변화 중 하나를 골라야 한다면?" },
+    { id: "v05", type: "VALUE", name: "자유", category: "자유", description: "누구에게도 얽매이지 않는 선택권을 중시한다.", question: "자유를 가장 크게 느꼈던 순간은 언제였나요?" },
+    { id: "v06", type: "VALUE", name: "성장", category: "성장", description: "어제보다 나은 자신이 되는 과정을 즐긴다.", question: "최근 스스로 성장했다고 느낀 순간이 있나요?" },
+    { id: "v07", type: "VALUE", name: "신뢰", category: "관계", description: "약속을 지키고 사람을 믿는 관계를 맺는다.", question: "누군가를 완전히 신뢰하게 된 계기가 있다면?" },
+    { id: "v08", type: "VALUE", name: "우정", category: "관계", description: "곁을 지켜주는 친구들을 삶의 기둥으로 삼는다.", question: "가장 오래된 친구와의 인연은 어떻게 시작됐나요?" },
+    { id: "v09", type: "VALUE", name: "명예", category: "성취", description: "타인에게 인정받고 존중받는 것을 중요하게 여긴다.", question: "인정받고 싶은 순간은 주로 언제인가요?" },
+    { id: "v10", type: "VALUE", name: "배움", category: "성장", description: "끊임없이 새로운 지식을 흡수하려 한다.", question: "요즘 가장 배우고 싶은 것은 무엇인가요?" },
+    { id: "v11", type: "VALUE", name: "봉사", category: "윤리", description: "타인을 돕는 행위에서 삶의 보람을 느낀다.", question: "누군가를 도왔던 경험 중 기억에 남는 것은?" },
+    { id: "v12", type: "VALUE", name: "여유", category: "안정", description: "서두르지 않고 순간을 즐기는 삶을 지향한다.", question: "가장 여유롭다고 느끼는 순간은 언제인가요?" },
+    { id: "v13", type: "VALUE", name: "창의", category: "성장", description: "틀에 얽매이지 않는 발상을 가치 있게 여긴다.", question: "틀을 깬 아이디어를 냈던 경험이 있나요?" },
+    { id: "v14", type: "VALUE", name: "용기", category: "성취", description: "두려움 앞에서도 행동하는 것을 중요하게 여긴다.", question: "가장 용기를 냈던 선택은 무엇이었나요?" }
+  ];
+
+  var MASTER_LIFE_FULL = [
+    { id: "l01", type: "LIFE", name: "활력", description: "몸과 마음의 에너지가 넘치는 시간을 상징한다.", effect: "+5년" },
+    { id: "l02", type: "LIFE", name: "회복", description: "위기 속에서도 다시 일어서는 힘을 상징한다.", effect: "+5년" },
+    { id: "l03", type: "LIFE", name: "지혜", description: "경험에서 얻은 통찰이 삶을 지탱해준다.", effect: "+5년" },
+    { id: "l04", type: "LIFE", name: "인연", description: "곁을 지켜주는 사람들이 삶을 길게 늘려준다.", effect: "+5년" },
+    { id: "l05", type: "LIFE", name: "절제", description: "무리하지 않는 습관이 오랜 시간을 만든다.", effect: "+5년" },
+    { id: "l06", type: "LIFE", name: "평온", description: "마음의 안정이 몸의 수명을 지켜준다.", effect: "+5년" }
+  ];
+
+  var VALUE_POOL = (typeof MASTER_VALUE !== "undefined" && Array.isArray(MASTER_VALUE)) ? MASTER_VALUE : MASTER_VALUE_FULL;
+  var LIFE_POOL = (typeof MASTER_LIFE !== "undefined" && Array.isArray(MASTER_LIFE)) ? MASTER_LIFE : MASTER_LIFE_FULL;
+
+  // 2. Supabase 클라이언트 초기화
+  var SUPABASE_URL = "https://bqwrahmqnmrzrtghawmy.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_-lvbut_R4UxnEcCr5BHfbQ_bP8Yq-7Q";
+  var supabaseClient = null;
+
+  try {
+    if (window.supabase && typeof window.supabase.createClient === "function") {
+      supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: false }
+      });
+    }
+  } catch (err) {}
+
+  // 3. [핵심 해결] 탭을 복제해서 열더라도 탭마다 100% 고유한 플레이어 ID 보장!
+  if (!window.name || !window.name.startsWith("mayfly_tab_")) {
+    window.name = "mayfly_tab_" + Math.random().toString(36).substring(2, 10) + "_" + Date.now();
+  }
+  var SESSION_STORAGE_KEY = "mayfly_session_" + window.name;
+
+  var savedSession = null;
+  try {
+    var rawSession = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (rawSession) savedSession = JSON.parse(rawSession);
+  } catch (e) {}
+
+  var myId = (savedSession && savedSession.myId) ? savedSession.myId : ("player_" + window.name.replace("mayfly_tab_", ""));
+
+  var state = {
+    myId: myId,
+    nickname: (savedSession && savedSession.nickname) ? savedSession.nickname : "찬우",
+    roomCode: (savedSession && savedSession.roomCode) ? savedSession.roomCode : null,
+    roomTitle: (savedSession && savedSession.roomTitle) ? savedSession.roomTitle : "누구나 환영하는 가치관 대화방",
+    minPlayers: (savedSession && savedSession.minPlayers) ? savedSession.minPlayers : 2,
+    maxPlayers: (savedSession && savedSession.maxPlayers) ? savedSession.maxPlayers : 8,
+    isPrivate: false,
+    roomPassword: null,
+    isHost: (savedSession && typeof savedSession.isHost === "boolean") ? savedSession.isHost : false,
+    isReady: (savedSession && typeof savedSession.isReady === "boolean") ? savedSession.isReady : false,
+    isSittingOut: (savedSession && typeof savedSession.isSittingOut === "boolean") ? savedSession.isSittingOut : false,
+    members: (savedSession && Array.isArray(savedSession.members)) ? savedSession.members : [],
+    pairId: (savedSession && savedSession.pairId) ? savedSession.pairId : null,
+    partnerId: (savedSession && savedSession.partnerId) ? savedSession.partnerId : null,
+    partnerName: (savedSession && savedSession.partnerName) ? savedSession.partnerName : "상대방",
+    hand: (savedSession && Array.isArray(savedSession.hand)) ? savedSession.hand : [],
+    currentTurn: (savedSession && savedSession.currentTurn) ? savedSession.currentTurn : 1,
+    totalTurns: 5,
+    currentPhase: (savedSession && typeof savedSession.currentPhase === "number") ? savedSession.currentPhase : 0,
+    selectedGiveCardIds: [],
+    selectedCardId: null,
+    timer: 0,
+    timerInterval: null,
+    inspectEndTime: (savedSession && savedSession.inspectEndTime) ? savedSession.inspectEndTime : null,
+    dialogueEndTime: (savedSession && savedSession.dialogueEndTime) ? savedSession.dialogueEndTime : null,
+    mySubmittedCards: null,
+    partnerGiveCards: null,
+    turnHistory: (savedSession && Array.isArray(savedSession.turnHistory)) ? savedSession.turnHistory : [],
+    waitingMode: (savedSession && savedSession.waitingMode) ? savedSession.waitingMode : "ODD_REST"
+  };
+
+  function saveSession() {
+    if (!state.roomCode) {
+      try { sessionStorage.removeItem(SESSION_STORAGE_KEY); } catch (e) {}
+      return;
+    }
+    try {
+      var data = {
+        myId: state.myId,
+        nickname: state.nickname,
+        roomCode: state.roomCode,
+        roomTitle: state.roomTitle,
+        minPlayers: state.minPlayers,
+        maxPlayers: state.maxPlayers,
+        isHost: state.isHost,
+        isReady: state.isReady,
+        isSittingOut: state.isSittingOut,
+        currentPhase: state.currentPhase,
+        currentTurn: state.currentTurn,
+        hand: state.hand,
+        pairId: state.pairId,
+        partnerId: state.partnerId,
+        partnerName: state.partnerName,
+        turnHistory: state.turnHistory,
+        members: state.members,
+        inspectEndTime: state.inspectEndTime,
+        dialogueEndTime: state.dialogueEndTime,
+        waitingMode: state.waitingMode
+      };
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  function clearSession() {
+    try {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      sessionStorage.removeItem("mayfly_session");
+    } catch (e) {}
+  }
+
+  var processedMsgIds = new Set();
+  var pendingPrivateRoom = null;
+  var isCreatingRoomLock = false;
+  var activePairTopic = null;
+
+  // [핵심] 기존 대기방(phaseLobbyView)과 완전히 분리된 전용 매칭 대기 페이지(phaseWaitingView) 생성
+  function ensureWaitingViewExists() {
+    var existing = document.getElementById("phaseWaitingView");
+    if (existing) return existing;
+
+    var container = document.querySelector(".stage-container");
+    if (!container) return null;
+
+    var view = document.createElement("div");
+    view.className = "phase-view";
+    view.id = "phaseWaitingView";
+    view.innerHTML =
+      '<div class="stage-title">' +
+        '<span class="turn-badge" id="waitingTurnBadge">1턴</span>' +
+        '<span id="waitingHeaderTitle">새로운 상대방 매칭 대기 페이지</span>' +
+      '</div>' +
+      '<p class="stage-hint" id="waitingHeaderHint">' +
+        '다른 참가자들의 대화와 카드 교환이 완료되면 <b>새로운 상대방과 자동으로 1:1 대화방이 시작</b>됩니다.' +
+      '</p>' +
+      '<div class="match-box" style="max-width: 520px; padding: 36px 24px; text-align: center;">' +
+        '<div style="font-size: 52px; margin-bottom: 14px;" id="waitingStatusIcon">⏳</div>' +
+        '<div style="font-size: 20px; font-weight: 900; color: var(--ink); margin-bottom: 10px;" id="waitingMainTitle">' +
+          '다음 턴 매칭을 기다리고 있습니다' +
+        '</div>' +
+        '<p style="font-size: 13.5px; color: var(--ink-dim); line-height: 1.7; margin-bottom: 24px;" id="waitingSubDesc">' +
+          '현재 진행 중인 다른 참가자들의 카드 교환이 끝나면<br>' +
+          '<b style="color:var(--accent-soft);">새로운 상대방과 다음 턴 1:1 대화가 즉시 시작</b>됩니다!' +
+        '</p>' +
+        '<div style="background: rgba(139, 124, 246, 0.14); border: 1px solid var(--accent); border-radius: 12px; padding: 14px 22px; display: inline-flex; align-items: center; gap: 10px; margin-bottom: 16px;">' +
+          '<span style="font-size: 16px;">🔄</span>' +
+          '<span style="font-size: 13.5px; font-weight: 800; color: var(--accent-soft);" id="waitingProgressText">' +
+            '다른 참가자 대화 및 카드 교환 진행 중...' +
+          '</span>' +
+        '</div>' +
+        '<div style="margin-top: 6px; margin-bottom: 14px;">' +
+          '<button type="button" class="btn btn-outline" id="btnForceNextRound" style="font-size: 11.5px; padding: 6px 14px;">' +
+            '⚡ 상대방 응답 지연 시 바로 다음 턴 매칭 시작하기' +
+          '</button>' +
+        '</div>' +
+        '<div style="font-size: 12px; color: var(--ink-faint);">' +
+          '잠시 기다리는 동안 화면 하단에서 내 카드를 클릭해 질문과 설명을 확인해보세요.' +
+        '</div>' +
+      '</div>';
+
+    container.appendChild(view);
+
+    var forceBtn = document.getElementById("btnForceNextRound");
+    if (forceBtn) {
+      forceBtn.addEventListener("click", function () {
+        brokerClient.sendRaw({
+          action: "COMPLETE_TURN",
+          roomCode: state.roomCode,
+          playerId: state.myId,
+          turn: state.currentTurn,
+          forceAdvance: true
+        });
+      });
+    }
+
+    return view;
+  }
+
+  function showMatchingWaitPage(mode, targetTurn, readyCount, totalRequired) {
+    ensureWaitingViewExists();
+    state.waitingMode = mode || "ODD_REST";
+
+    var $waitTurnBadge = document.getElementById("waitingTurnBadge");
+    var $waitHeaderTitle = document.getElementById("waitingHeaderTitle");
+    var $waitIcon = document.getElementById("waitingStatusIcon");
+    var $waitTitle = document.getElementById("waitingMainTitle");
+    var $waitDesc = document.getElementById("waitingSubDesc");
+    var $waitProgress = document.getElementById("waitingProgressText");
+
+    var turnNum = targetTurn || state.currentTurn || 1;
+    if ($waitTurnBadge) $waitTurnBadge.textContent = turnNum + "턴";
+
+    if (state.waitingMode === "ODD_REST") {
+      if ($waitHeaderTitle) $waitHeaderTitle.textContent = "매칭을 기다리는 중... (이번 턴 대기 순서)";
+      if ($waitIcon) $waitIcon.textContent = "☕";
+      if ($waitTitle) $waitTitle.textContent = turnNum + "턴 매칭 대기 페이지";
+      if ($waitDesc) {
+        $waitDesc.innerHTML =
+          "현재 방 인원이 홀수(" + (state.members.length || 3) + "명)여서 이번 턴은 전용 대기 페이지에서 잠시 대기합니다.<br>" +
+          "다른 두 참가자의 대화와 카드 교환이 완료되는 즉시,<br>" +
+          "<b style='color:var(--accent-soft);'>" + (turnNum + 1) + "턴에 새로운 상대방과 가장 먼저 1:1로 매칭</b>됩니다!";
+      }
+    } else {
+      if ($waitHeaderTitle) $waitHeaderTitle.textContent = "다음 턴 새로운 상대방 매칭 대기 중...";
+      if ($waitIcon) $waitIcon.textContent = "🤝";
+      if ($waitTitle) $waitTitle.textContent = turnNum + "턴 새로운 상대방 매칭 대기 중";
+      if ($waitDesc) {
+        $waitDesc.innerHTML =
+          "이번 턴 카드 교환이 완료되었습니다!<br>" +
+          "다른 참가자들의 교환이 마무리되는 즉시 <b style='color:var(--accent-soft);'>새로운 상대방과 " + turnNum + "턴 대화방이 열립니다.</b>";
+      }
+    }
+
+    if ($waitProgress) {
+      if (readyCount !== undefined && totalRequired !== undefined) {
+        $waitProgress.textContent = "현재 카드 교환 완료 인원: " + readyCount + " / " + totalRequired + "명";
+      } else {
+        $waitProgress.textContent = "다른 참가자들의 대화 및 교환 완료를 기다리는 중...";
+      }
+    }
+
+    switchView(999, false);
+  }
+
+  // 4. WebSocket 메시지 브로커 클라이언트
   class WebSocketMessageBrokerClient {
     constructor() {
       this.socket = null;
       this.connected = false;
       this.subscriptions = new Map();
+      this.pendingQueue = [];
       this.initConnection();
     }
-    
 
     initConnection() {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.host;
-      const wsUrl = `${protocol}//${host}/ws-stomp`;
+      var hostname = window.location.hostname || "localhost";
+      var port = window.location.port;
+
+      var targetHost = (hostname === "localhost" || hostname === "127.0.0.1") && port && port !== "8080"
+        ? (hostname + ":8080")
+        : (window.location.host || "localhost:8080");
+
+      var protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      var wsUrl = protocol + "//" + targetHost + "/ws-stomp";
 
       try {
         this.socket = new WebSocket(wsUrl);
 
         this.socket.onopen = () => {
-          this.sendRaw({ action: "CONNECT" });
+          if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            this.socket.send(JSON.stringify({ action: "CONNECT" }));
+          }
         };
 
         this.socket.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data);
+            var data = JSON.parse(event.data);
             this.handleServerMessage(data);
-          } catch (e) {
-            console.error("[Broker] Parse error:", e);
-          }
+          } catch (e) {}
         };
 
-        this.socket.onerror = () => {
-          this.updateStatus(false);
-        };
-
+        this.socket.onerror = () => this.updateStatus(false);
         this.socket.onclose = () => {
           this.connected = false;
           this.updateStatus(false);
@@ -48,528 +297,792 @@
       }
     }
 
-    updateStatus(isOnline) {
-      const badge = document.getElementById("netStatusBadge");
-      if (badge) {
-        if (isOnline) {
-          badge.textContent = "WebSocket 연결됨 🟢";
-          badge.style.color = "#2fbfa6";
-        } else {
-          badge.textContent = "서버 재연결 중 🔴";
-          badge.style.color = "#ef4444";
-        }
+    updateStatus(isOnline, customText) {
+      var badge = document.getElementById("netStatusBadge");
+      if (!badge) return;
+      var dbOk = Boolean(supabaseClient);
+
+      badge.textContent = "";
+      badge.style.display = "inline-block";
+      badge.style.width = "9px";
+      badge.style.height = "9px";
+      badge.style.borderRadius = "50%";
+      badge.style.padding = "0";
+      badge.style.border = "none";
+
+      if (customText) {
+        badge.style.background = "#f59e0b";
+        badge.style.boxShadow = "0 0 8px rgba(245, 158, 11, 0.8)";
+        badge.title = customText;
+      } else if (isOnline && dbOk) {
+        badge.style.background = "#10b981";
+        badge.style.boxShadow = "0 0 10px rgba(16, 185, 129, 0.9)";
+        badge.title = "실시간 서버 및 DB 정상 연결됨";
+      } else if (isOnline && !dbOk) {
+        badge.style.background = "#f97316";
+        badge.style.boxShadow = "0 0 8px rgba(249, 115, 22, 0.8)";
+        badge.title = "웹소켓 정상 / DB 미연결";
+      } else {
+        badge.style.background = "#ef4444";
+        badge.style.boxShadow = "0 0 10px rgba(239, 68, 68, 0.9)";
+        badge.title = "서버 연결 끊김 (재연결 시도 중...)";
       }
     }
 
     sendRaw(obj) {
-      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+      if (this.connected && this.socket && this.socket.readyState === WebSocket.OPEN) {
         this.socket.send(JSON.stringify(obj));
+        return true;
       }
+      this.pendingQueue.push(obj);
+      return false;
     }
 
     handleServerMessage(data) {
-      const { action, topic, payload } = data;
+      var action = data.action;
+      var topic = data.topic;
+      var payload = data.payload;
 
       if (action === "CONNECTED") {
         this.connected = true;
         this.updateStatus(true);
-        for (const dest of this.subscriptions.keys()) {
-          this.sendRaw({ action: "SUBSCRIBE", destination: dest });
+        for (var dest of this.subscriptions.keys()) {
+          this.socket.send(JSON.stringify({ action: "SUBSCRIBE", destination: dest }));
+        }
+        this.socket.send(JSON.stringify({ action: "SUBSCRIBE", destination: "/topic/lobby" }));
+
+        while (this.pendingQueue.length > 0) {
+          var queued = this.pendingQueue.shift();
+          this.socket.send(JSON.stringify(queued));
+        }
+
+        if (state.roomCode) {
+          this.socket.send(JSON.stringify({
+            action: "RECONNECT",
+            roomCode: state.roomCode,
+            playerId: state.myId,
+            nickname: state.nickname
+          }));
         }
       } else if (action === "ERROR") {
         alert(data.message || "오류가 발생했습니다.");
       } else if (action === "ROOM_CREATED") {
-        onRoomCreatedSuccess(data.roomCode, data.members);
+        onRoomCreatedSuccess(data.roomCode, data.members, data.title, data.minPlayers, data.maxPlayers);
       } else if (action === "ROOM_JOINED") {
-        onRoomJoinedSuccess(data.roomCode, data.members);
+        onRoomJoinedSuccess(data.roomCode, data.members, data.title, data.minPlayers, data.maxPlayers);
+      } else if (action === "RECONNECTED") {
+        if (data.members) state.members = data.members;
+        if (data.title) state.roomTitle = data.title;
+        if (data.minPlayers) state.minPlayers = data.minPlayers;
+        if (data.maxPlayers) state.maxPlayers = data.maxPlayers;
+        if (data.currentTurn) state.currentTurn = data.currentTurn;
+        renderMemberList();
+        saveSession();
       } else if (topic && payload) {
-        const callbacks = this.subscriptions.get(topic);
+        var callbacks = this.subscriptions.get(topic);
         if (callbacks) {
-          for (const cb of callbacks) cb(payload);
+          for (var cb of callbacks) cb(payload);
         }
       }
     }
 
     subscribe(destination, callback) {
-      if (!this.subscriptions.has(destination)) {
-        this.subscriptions.set(destination, new Set());
-      }
-      this.subscriptions.get(destination).add(callback);
-      this.sendRaw({ action: "SUBSCRIBE", destination });
+      this.subscriptions.set(destination, new Set([callback]));
+      this.sendRaw({ action: "SUBSCRIBE", destination: destination });
     }
 
     unsubscribe(destination) {
-      this.subscriptions.delete(destination);
-      this.sendRaw({ action: "UNSUBSCRIBE", destination });
+      if (this.subscriptions.has(destination)) {
+        this.subscriptions.delete(destination);
+      }
+      this.sendRaw({ action: "UNSUBSCRIBE", destination: destination });
     }
 
     publish(destination, payload) {
-      this.sendRaw({ action: "SEND", destination, payload });
+      this.sendRaw({ action: "SEND", destination: destination, payload: payload });
     }
   }
 
-  const brokerClient = new WebSocketMessageBrokerClient();
-  const myId = "player_" + Math.random().toString(36).substring(2, 9);
+  var brokerClient = new WebSocketMessageBrokerClient();
 
-  // =========================================================
-  // 2. 상태 관리 (State)
-  // =========================================================
-  const state = {
-    myId: myId,
-    nickname: "참가자",
-    roomCode: null,
-    isHost: false,
-    isReady: false,
-    isSittingOut: false,
-    members: [],
+  brokerClient.subscribe("/topic/lobby", function (data) {
+    if (!data) return;
+    if (data.type === "ROOM_DELETED") {
+      var card = document.querySelector('.room-card[data-code="' + data.roomCode + '"]');
+      if (card) card.remove();
 
-    // 1:1 매칭
-    pairId: null,
-    partnerId: null,
-    partnerName: "상대방",
+      var grid = document.getElementById("roomListGrid");
+      if (grid && grid.querySelectorAll(".room-card").length === 0) {
+        grid.innerHTML = '<div style="text-align: center; color: var(--ink-faint); padding: 30px 0; font-size: 12.5px;">열려있는 대화방이 없습니다. [👑 방 만들기] 탭에서 새 방을 개설해보세요!</div>';
+      }
+    } else if (data.type === "ROOM_CREATED" || data.type === "ROOM_UPDATED") {
+      if (state.currentPhase === 0 && !state.roomCode) {
+        window.loadRoomsFromDb();
+      }
+    }
+  });
 
-    // 인게임
-    hand: [],
-    currentTurn: 1,
-    totalTurns: 5,
-    currentPhase: 0,
-    selectedGiveCardIds: [],
-    selectedCardId: null,
-    timer: 0,
-    timerInterval: null,
-    mySubmittedCards: null,
-    partnerGiveCards: null,
-    turnHistory: []
+  // 5. 로비 탭 전환
+  window.switchLobbyTab = function (mode) {
+    var pList = document.getElementById("panelRoomList");
+    var pCreate = document.getElementById("panelCreateRoom");
+    var pJoin = document.getElementById("panelJoinRoom");
+
+    var tList = document.getElementById("tabRoomList");
+    var tCreate = document.getElementById("tabCreateRoom");
+    var tJoin = document.getElementById("tabDirectJoin");
+
+    if (mode === "list") {
+      if (pList) pList.style.display = "block";
+      if (pCreate) pCreate.style.display = "none";
+      if (pJoin) pJoin.style.display = "none";
+      if (tList) tList.className = "btn btn-primary";
+      if (tCreate) tCreate.className = "btn btn-outline";
+      if (tJoin) tJoin.className = "btn btn-outline";
+      window.loadRoomsFromDb();
+    } else if (mode === "create") {
+      if (pList) pList.style.display = "none";
+      if (pCreate) pCreate.style.display = "block";
+      if (pJoin) pJoin.style.display = "none";
+      if (tList) tList.className = "btn btn-outline";
+      if (tCreate) tCreate.className = "btn btn-primary";
+      if (tJoin) tJoin.className = "btn btn-outline";
+    } else if (mode === "join") {
+      if (pList) pList.style.display = "none";
+      if (pCreate) pCreate.style.display = "none";
+      if (pJoin) pJoin.style.display = "block";
+      if (tList) tList.className = "btn btn-outline";
+      if (tCreate) tCreate.className = "btn btn-outline";
+      if (tJoin) tJoin.className = "btn btn-primary";
+    }
   };
 
-  const processedMsgIds = new Set();
+  // 6. 방 목록 조회
+  window.loadRoomsFromDb = async function () {
+    var $grid = document.getElementById("roomListGrid");
+    if (!$grid) return;
 
-  // =========================================================
-  // 3. 방 생성 & 입장 응답
-  // =========================================================
-  function onRoomCreatedSuccess(roomCode, members) {
-    state.roomCode = roomCode;
+    var rooms = [];
+
+    if (supabaseClient) {
+      try {
+        var res = await supabaseClient
+          .from("rooms")
+          .select("room_code, title, host_name, min_players, max_players, current_players, is_private, status")
+          .eq("status", "WAITING")
+          .gt("current_players", 0)
+          .order("created_at", { ascending: false });
+
+        if (!res.error && Array.isArray(res.data)) {
+          rooms = res.data.map(function (r) {
+            return {
+              room_code: String(r.room_code),
+              title: r.title || "가치관 대화방",
+              host_name: r.host_name || "방장",
+              min_players: r.min_players || 2,
+              max_players: r.max_players || 8,
+              current_players: r.current_players || 1,
+              is_private: Boolean(r.is_private),
+              status: r.status || "WAITING"
+            };
+          });
+        }
+      } catch (e) {}
+    }
+
+    if (rooms.length === 0) {
+      $grid.innerHTML = '<div style="text-align: center; color: var(--ink-faint); padding: 30px 0; font-size: 12.5px;">열려있는 대화방이 없습니다. [👑 방 만들기] 탭에서 새 방을 개설해보세요!</div>';
+      return;
+    }
+
+    $grid.innerHTML = rooms.map(function (r) {
+      var safeTitle = escapeHtml(r.title);
+      var safeHost = escapeHtml(r.host_name);
+      var safeCode = escapeHtml(r.room_code);
+      var minP = parseInt(r.min_players, 10) || 2;
+      var maxP = parseInt(r.max_players, 10) || 8;
+      var curP = parseInt(r.current_players, 10) || 1;
+      var isPriv = Boolean(r.is_private);
+
+      return '<div class="room-card" data-code="' + safeCode + '" onclick="window.handleClickRoomItem(\'' + safeCode + '\', ' + isPriv + ', ' + curP + ', ' + maxP + ', \'' + safeTitle + '\', ' + minP + ')">' +
+        '<div style="display: flex; align-items: center; gap: 10px;">' +
+          '<span style="font-size: 18px;">' + (isPriv ? '🔒' : '🌐') + '</span>' +
+          '<div>' +
+            '<div style="font-size: 13.5px; font-weight: 800; color: var(--ink);">' + safeTitle + '</div>' +
+            '<div style="font-size: 11px; color: var(--ink-dim); margin-top: 2px;">방장: ' + safeHost + ' · 최소 ' + minP + '명 시작</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align: right;">' +
+          '<span style="font-size: 12.5px; font-weight: 800; color: ' + (curP >= maxP ? 'var(--danger)' : 'var(--accent-soft)') + ';">' + curP + ' / ' + maxP + '명</span>' +
+          '<div style="font-size: 10px; color: var(--ink-faint); margin-top: 2px;">#' + safeCode + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+  };
+
+  // 7. 방 만들기 실행 함수
+  window.handleCreateRoomSubmit = function (e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isCreatingRoomLock) return;
+    isCreatingRoomLock = true;
+    setTimeout(function () { isCreatingRoomLock = false; }, 600);
+
+    var nickEl = document.getElementById("nicknameInput");
+    state.nickname = (nickEl && nickEl.value && nickEl.value.trim()) ? nickEl.value.trim() : "방장";
+    var disp = document.getElementById("myNickDisplay");
+    if (disp) disp.textContent = state.nickname;
+
+    var titleEl = document.getElementById("createRoomTitle");
+    var title = (titleEl && titleEl.value && titleEl.value.trim()) ? titleEl.value.trim() : (state.nickname + "님의 가치관 대화방");
+
+    var minEl = document.getElementById("createMinPlayers");
+    var maxEl = document.getElementById("createMaxPlayers");
+    var minP = minEl ? parseInt(minEl.value, 10) : 2;
+    var maxP = maxEl ? parseInt(maxEl.value, 10) : 8;
+    if (isNaN(minP) || minP < 2) minP = 2;
+    if (minP > 15) minP = 15;
+    if (isNaN(maxP) || maxP < 2) maxP = 8;
+    if (maxP > 15) maxP = 15;
+
+    if (minP > maxP) {
+      alert("시작 최소 인원(" + minP + "명)이 최대 정원(" + maxP + "명)보다 클 수 없습니다!");
+      isCreatingRoomLock = false;
+      return;
+    }
+
+    var privEl = document.getElementById("chkIsPrivate");
+    var isPriv = privEl ? Boolean(privEl.checked) : false;
+
+    var passEl = document.getElementById("createRoomPassword");
+    var pass = (isPriv && passEl && passEl.value) ? passEl.value.trim() : null;
+
+    if (isPriv && (!pass || !/^\d{4}$/.test(pass))) {
+      alert("비밀방 비밀번호는 숫자 4자리(예: 1234)로 정확히 입력해주세요!");
+      if (passEl) passEl.focus();
+      isCreatingRoomLock = false;
+      return;
+    }
+
+    var roomCode = String(Math.floor(1000 + Math.random() * 9000));
+    state.roomTitle = title;
+    state.minPlayers = minP;
+    state.maxPlayers = maxP;
+    state.isPrivate = isPriv;
+    state.roomPassword = pass;
+
+    var initialMembers = [
+      { id: state.myId, name: state.nickname, isHost: true, isReady: true }
+    ];
+
+    onRoomCreatedSuccess(roomCode, initialMembers, title, minP, maxP);
+
+    if (supabaseClient) {
+      supabaseClient
+        .from("rooms")
+        .insert([{
+          room_code: roomCode,
+          title: title,
+          host_name: state.nickname,
+          min_players: minP,
+          max_players: maxP,
+          current_players: 1,
+          is_private: isPriv,
+          password: pass,
+          status: "WAITING"
+        }])
+        .then(function () {})
+        .catch(function () {});
+    }
+
+    brokerClient.sendRaw({
+      action: "CREATE_ROOM",
+      nickname: state.nickname,
+      playerId: state.myId,
+      roomCode: roomCode,
+      title: title,
+      minPlayers: minP,
+      maxPlayers: maxP,
+      isPrivate: isPriv,
+      password: pass
+    });
+  };
+
+  window.handleClickRoomItem = function (code, isPrivate, current, max, title, min) {
+    if (current >= max) {
+      alert("해당 방은 정원(" + max + "명)이 가득 찼습니다!");
+      return;
+    }
+
+    state.roomTitle = title || "가치관 대화방";
+    state.minPlayers = min || 2;
+    state.maxPlayers = max || 8;
+
+    if (isPrivate) {
+      pendingPrivateRoom = { code: String(code) };
+      var modal = document.getElementById("passwordModal");
+      var titleEl = document.getElementById("pwdModalTitle");
+      var input = document.getElementById("pwdModalInput");
+      if (titleEl) titleEl.textContent = "🔒 '" + escapeHtml(state.roomTitle) + "' 입장";
+      if (modal) modal.classList.add("show");
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
+    } else {
+      executeJoinRoom(String(code), null);
+    }
+  };
+
+  function executeJoinRoom(code, password) {
+    var nickEl = document.getElementById("nicknameInput");
+    state.nickname = (nickEl && nickEl.value && nickEl.value.trim()) ? nickEl.value.trim() : "참가자";
+    var disp = document.getElementById("myNickDisplay");
+    if (disp) disp.textContent = state.nickname;
+
+    brokerClient.sendRaw({
+      action: "JOIN_ROOM",
+      roomCode: code,
+      nickname: state.nickname,
+      playerId: state.myId,
+      payload: { password: password || null }
+    });
+  }
+
+  function onRoomCreatedSuccess(roomCode, members, title, minPlayers, maxPlayers) {
+    state.roomCode = String(roomCode);
     state.isHost = true;
     state.isReady = true;
-    state.members = members;
+    state.isSittingOut = false;
+    state.currentPhase = 0;
+    state.currentTurn = 1;
+    state.hand = [];
+    state.turnHistory = [];
+    if (title) state.roomTitle = title;
+    if (minPlayers) state.minPlayers = minPlayers;
+    if (maxPlayers) state.maxPlayers = maxPlayers;
+    state.members = members || [{ id: state.myId, name: state.nickname, isHost: true, isReady: true }];
 
-    brokerClient.subscribe(`/topic/room/${roomCode}`, handleRoomTopicMessage);
-    openWaitingRoomUi(roomCode);
+    saveSession();
+    brokerClient.subscribe("/topic/room/" + state.roomCode, handleRoomTopicMessage);
+    openWaitingRoomUi(state.roomCode);
     renderMemberList();
-    showToast(`방(#${roomCode})이 개설되었습니다! 코드를 공유하세요.`);
+    showToast("방(#" + state.roomCode + ")이 개설되었습니다!");
   }
 
-  function onRoomJoinedSuccess(roomCode, members) {
-    state.roomCode = roomCode;
+  function onRoomJoinedSuccess(roomCode, members, title, minPlayers, maxPlayers) {
+    state.roomCode = String(roomCode);
     state.isHost = false;
     state.isReady = false;
-    state.members = members;
+    state.isSittingOut = false;
+    state.currentPhase = 0;
+    state.currentTurn = 1;
+    state.hand = [];
+    state.turnHistory = [];
+    if (title) state.roomTitle = title;
+    if (minPlayers) state.minPlayers = minPlayers;
+    if (maxPlayers) state.maxPlayers = maxPlayers;
+    state.members = members || [];
 
-    brokerClient.subscribe(`/topic/room/${roomCode}`, handleRoomTopicMessage);
-    openWaitingRoomUi(roomCode);
+    saveSession();
+    brokerClient.subscribe("/topic/room/" + state.roomCode, handleRoomTopicMessage);
+    openWaitingRoomUi(state.roomCode);
     renderMemberList();
-    showToast(`방(#${roomCode})에 입장했습니다!`);
+    showToast("방(#" + state.roomCode + ")에 입장했습니다!");
   }
 
-  // =========================================================
-  // 4. 대기실 토픽 수신
-  // =========================================================
-  function handleRoomTopicMessage(data) {
-    if (!data) return;
-    const { type, members, pairs, waitingPlayer } = data;
+  // [핵심] 매 턴 매칭 결과 처리 (1:1 대화자 vs 전용 매칭 대기 페이지)
+  function handleMatchResult(pairs, waitingPlayer, turn) {
+    if (turn) state.currentTurn = turn;
+    updateDashboard();
 
-    if (type === "ROOM_UPDATE") {
-      state.members = members || [];
-      const me = state.members.find(m => m.id === state.myId);
-      if (me) {
-        state.isHost = me.isHost;
-        state.isReady = me.isReady;
-        document.getElementById("hostActionArea").style.display = state.isHost ? "block" : "none";
-        document.getElementById("guestActionArea").style.display = state.isHost ? "none" : "block";
-      }
-      renderMemberList();
-    } else if (type === "MATCH_START_WITH_PAIRS") {
-      handleMatchResult(pairs, waitingPlayer);
+    if (activePairTopic) {
+      brokerClient.unsubscribe(activePairTopic);
+      activePairTopic = null;
     }
-  }
 
-  function handleMatchResult(pairs, waitingPlayer) {
-    const myPair = pairs.find(p => p.p1.id === state.myId || p.p2.id === state.myId);
+    var $receiveModal = document.getElementById("receiveModal");
+    if ($receiveModal) $receiveModal.classList.remove("show");
+
+    var myPair = pairs ? pairs.find(function (p) { return p.p1.id === state.myId || p.p2.id === state.myId; }) : null;
 
     if (myPair) {
+      // 1:1 매칭된 참가자
       state.isSittingOut = false;
-      const isP1 = (myPair.p1.id === state.myId);
-      const partner = isP1 ? myPair.p2 : myPair.p1;
+      var isP1 = (myPair.p1.id === state.myId);
+      var partner = isP1 ? myPair.p2 : myPair.p1;
 
       state.pairId = myPair.pairId;
       state.partnerId = partner.id;
       state.partnerName = partner.name;
 
-      document.getElementById("dialoguePeerName").textContent = state.partnerName;
-      showToast(`🎉 1:1 매칭 완료! 상대방: '${state.partnerName}'`);
+      activePairTopic = "/topic/pair/" + state.roomCode + "_" + myPair.pairId;
+      brokerClient.subscribe(activePairTopic, handlePairGameEvent);
 
-      const pairTopic = `/topic/pair/${state.roomCode}_${myPair.pairId}`;
-      brokerClient.subscribe(pairTopic, handlePairGameEvent);
+      state.selectedGiveCardIds = [];
+      state.mySubmittedCards = null;
+      state.partnerGiveCards = null;
+      state.inspectEndTime = null;
+      state.dialogueEndTime = null;
 
-      initHand();
-      state.currentTurn = 1;
-      switchView(1);
-    } else if (waitingPlayer && waitingPlayer.id === state.myId) {
-      state.isSittingOut = true;
-      document.getElementById("waitingPlayerNotice").style.display = "block";
-      document.getElementById("guestActionArea").style.display = "none";
-      if (document.getElementById("hostActionArea")) {
-        document.getElementById("hostActionArea").style.display = "none";
+      if (state.hand.length === 0) {
+        initHand();
       }
-      showToast("참가 인원이 홀수여서 이번 턴은 대기석에 배정되었습니다.");
+
+      var peerNameEl = document.getElementById("dialoguePeerName");
+      if (peerNameEl) peerNameEl.textContent = state.partnerName;
+
+      var $chatBox = document.getElementById("chatBox");
+      if ($chatBox) {
+        $chatBox.innerHTML = '<div class="chat-msg system">' + state.currentTurn + '턴: <b>' + escapeHtml(state.partnerName) + '</b> 님과의 1:1 대화방이 연결되었습니다!</div>';
+      }
+
+      showToast("🎉 " + state.currentTurn + "턴 매칭 완료! 상대방: '" + escapeHtml(state.partnerName) + "'");
+      saveSession();
+      switchView(1, false);
+    } else {
+      // 홀수 인원 대기자 -> 전용 매칭 대기 페이지(999)로 이동!
+      state.isSittingOut = true;
+      state.pairId = null;
+      state.partnerId = null;
+      state.partnerName = "매칭 대기 중";
+
+      if (state.hand.length === 0) {
+        initHand();
+      }
+
+      showMatchingWaitPage("ODD_REST", state.currentTurn);
+      showToast("☕ 이번 턴은 매칭 대기 페이지에서 대기하며, 다음 턴에 새 상대와 연결됩니다!");
+      saveSession();
     }
   }
 
-  // =========================================================
-  // 5. 1:1 전용 토픽 이벤트 처리
-  // =========================================================
+  // 방 전체 토픽 이벤트 수신
+  function handleRoomTopicMessage(data) {
+    if (!data) return;
+    var type = data.type;
+    var members = data.members;
+    var pairs = data.pairs;
+    var waitingPlayer = data.waitingPlayer;
+
+    if (type === "MEMBER_LEFT") {
+      var leaverId = data.playerId;
+      var leaverName = escapeHtml(data.playerName || "상대방");
+
+      var isMyPartner = (state.partnerId && state.partnerId === leaverId);
+      if (state.currentPhase >= 1 && (isMyPartner || state.members.length <= 2)) {
+        clearInterval(state.timerInterval);
+        state.inspectEndTime = null;
+        state.dialogueEndTime = null;
+
+        alert("⚠️ 상대방(" + leaverName + ") 님이 방을 나갔습니다.\n대기실로 이동합니다.");
+
+        state.pairId = null;
+        state.partnerId = null;
+        state.partnerName = "상대방";
+        state.selectedGiveCardIds = [];
+        state.mySubmittedCards = null;
+        state.partnerGiveCards = null;
+        state.isSittingOut = false;
+
+        switchView(0, false);
+        openWaitingRoomUi(state.roomCode);
+        saveSession();
+      }
+
+      state.members = state.members.filter(function (m) { return m.id !== leaverId; });
+      renderMemberList();
+      saveSession();
+      return;
+    }
+
+    if (type === "ROOM_UPDATE") {
+      state.members = members || [];
+      if (data.title) state.roomTitle = data.title;
+      if (data.minPlayers) state.minPlayers = data.minPlayers;
+      if (data.maxPlayers) state.maxPlayers = data.maxPlayers;
+
+      var me = state.members.find(function (m) { return m.id === state.myId; });
+      if (me) {
+        var prevHost = state.isHost;
+        state.isHost = Boolean(me.isHost);
+        state.isReady = Boolean(me.isReady);
+
+        if (state.currentPhase === 0) {
+          var hostArea = document.getElementById("hostActionArea");
+          var guestArea = document.getElementById("guestActionArea");
+          if (hostArea) hostArea.style.display = state.isHost ? "block" : "none";
+          if (guestArea) guestArea.style.display = !state.isHost ? "block" : "none";
+        }
+
+        if (!prevHost && state.isHost) {
+          showToast("👑 이전 방장이 퇴장하여 새로운 방장이 되었습니다!");
+        }
+      }
+      renderMemberList();
+      saveSession();
+    } else if (type === "ROUND_START_WITH_PAIRS" || type === "MATCH_START_WITH_PAIRS") {
+      // [핵심] 새 턴 매칭 시작
+      handleMatchResult(pairs, waitingPlayer, data.turn);
+    } else if (type === "TURN_PROGRESS") {
+      if (state.currentPhase === 999) {
+        var $waitProgress = document.getElementById("waitingProgressText");
+        if ($waitProgress) {
+          $waitProgress.textContent = "현재 카드 교환 완료 인원: " + data.readyCount + " / " + data.totalRequired + "명";
+        }
+      }
+    } else if (type === "ALL_TURNS_FINISHED") {
+      switchView(4, false);
+    }
+  }
+
   function handlePairGameEvent(data) {
     if (!data || data.senderId === state.myId) return;
 
     if (data.msgId) {
       if (processedMsgIds.has(data.msgId)) return;
       processedMsgIds.add(data.msgId);
-      if (processedMsgIds.size > 200) {
-        const oldest = processedMsgIds.values().next().value;
-        processedMsgIds.delete(oldest);
-      }
     }
 
-    const { type, senderName, payload } = data;
+    var type = data.type;
+    var senderName = escapeHtml(data.senderName);
+    var payload = data.payload;
 
     if (type === "SKIP_INSPECT") {
       clearInterval(state.timerInterval);
-      switchView(2);
-      showToast(`⚡ ${senderName} 님이 스킵하여 대화가 시작되었습니다!`);
+      state.inspectEndTime = null;
+      switchView(2, false);
+      showToast("⚡ " + senderName + " 님이 스킵하여 대화가 시작되었습니다!");
     } else if (type === "SKIP_DIALOGUE") {
       clearInterval(state.timerInterval);
-      switchView(3);
-      showToast(`🎁 ${senderName} 님이 카드 교환 단계로 넘어갔습니다.`);
+      state.dialogueEndTime = null;
+      switchView(3, false);
+      showToast("🎁 " + senderName + " 님이 카드 교환 단계로 넘어갔습니다.");
     } else if (type === "CHAT_MSG") {
       appendChatMsg(payload.text, senderName, false);
     } else if (type === "SUBMIT_GIVE_CARDS") {
       state.partnerGiveCards = payload.cards;
-      const $peerStatusText = document.getElementById("peerStatusText");
+      var $peerStatusText = document.getElementById("peerStatusText");
       if ($peerStatusText) {
-        $peerStatusText.textContent = `🎁 ${senderName} 님이 선물을 확정했습니다! (내 선택 대기 중)`;
+        $peerStatusText.textContent = "🎁 " + senderName + " 님이 선물을 확정했습니다! (내 선택 대기 중)";
       }
       checkAndFinalizeTrade();
-    } else if (type === "ADVANCE_NEXT_TURN") {
-      const $receiveModal = document.getElementById("receiveModal");
-      if ($receiveModal) $receiveModal.classList.remove("show");
-      state.currentTurn = payload.turn;
-      if (state.currentTurn <= state.totalTurns) {
-        switchView(1);
-      } else {
-        switchView(4);
-      }
     }
   }
 
-  function publishToPair(type, payload = {}) {
+  function publishToPair(type, payload) {
     if (!state.pairId || !state.roomCode) return;
-    const msgId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
-    const data = {
-      msgId,
-      type,
+    var msgId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+    brokerClient.publish("/topic/pair/" + state.roomCode + "_" + state.pairId, {
+      msgId: msgId,
+      type: type,
       senderId: state.myId,
       senderName: state.nickname,
       pairId: state.pairId,
-      payload
-    };
-    brokerClient.publish(`/topic/pair/${state.roomCode}_${state.pairId}`, data);
+      payload: payload || {}
+    });
   }
 
-  // =========================================================
-  // 6. 대기실 명단 UI
-  // =========================================================
+  // 8. 대기실 명단 렌더링
   function renderMemberList() {
-    const $container = document.getElementById("memberListContainer");
-    const $memberCountText = document.getElementById("memberCountText");
-    const $readySummaryText = document.getElementById("readySummaryText");
-    const $hostStartBtn = document.getElementById("btnStartGameMatching");
-    const $hostNotice = document.getElementById("hostStatusNotice");
+    var $container = document.getElementById("memberListContainer");
+    var $memberCountText = document.getElementById("memberCountText");
+    var $readySummaryText = document.getElementById("readySummaryText");
+    var $hostStartBtn = document.getElementById("btnStartGameMatching");
+    var $hostNotice = document.getElementById("hostStatusNotice");
 
     if (!$container) return;
-    const list = state.members;
+    var list = state.members;
     if ($memberCountText) $memberCountText.textContent = list.length;
 
-    $container.innerHTML = list.map(m => {
-      const isMe = m.id === state.myId;
-      const isHost = m.isHost;
-      const isReady = m.isReady;
-
-      let badgeHtml = "";
-      if (isHost) {
-        badgeHtml = `<span style="background: rgba(139,124,246,0.2); color: var(--accent-soft); border: 1px solid var(--accent); padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">👑 방장</span>`;
-      } else if (isReady) {
-        badgeHtml = `<span style="background: rgba(16,185,129,0.2); color: var(--success); border: 1px solid var(--success); padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">✅ 준비 완료</span>`;
+    $container.innerHTML = list.map(function (m) {
+      var isMe = m.id === state.myId;
+      var badgeHtml = "";
+      if (m.isHost) {
+        badgeHtml = '<span style="background: rgba(139,124,246,0.2); color: var(--accent-soft); border: 1px solid var(--accent); padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">👑 방장</span>';
+      } else if (m.isReady) {
+        badgeHtml = '<span style="background: rgba(16,185,129,0.2); color: var(--success); border: 1px solid var(--success); padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">✅ 준비 완료</span>';
       } else {
-        badgeHtml = `<span style="background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid var(--warning); padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">⏳ 준비 대기</span>`;
+        badgeHtml = '<span style="background: rgba(245,158,11,0.15); color: var(--warning); border: 1px solid var(--warning); padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 700;">⏳ 준비 대기</span>';
       }
 
-      return `
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid var(--line);">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span>👤</span>
-            <span style="font-weight: 700; font-size: 13px; color: ${isMe ? 'var(--accent-soft)' : 'var(--ink)'};">
-              ${m.name} ${isMe ? '(나)' : ''}
-            </span>
-          </div>
-          <div>${badgeHtml}</div>
-        </div>
-      `;
+      return '<div style="display: flex; justify-content: space-between; align-items: center; padding: 9px 12px; background: rgba(255,255,255,0.04); border-radius: 10px; border: 1px solid var(--line);">' +
+        '<div style="display: flex; align-items: center; gap: 8px;"><span>👤</span><span style="font-weight: 700; font-size: 13px; color: ' + (isMe ? 'var(--accent-soft)' : 'var(--ink)') + ';">' + escapeHtml(m.name) + (isMe ? ' (나)' : '') + '</span></div>' +
+        '<div>' + badgeHtml + '</div>' +
+        '</div>';
     }).join("");
 
-    const guests = list.filter(m => !m.isHost);
-    const allGuestsReady = guests.length > 0 && guests.every(g => g.isReady);
+    var guests = list.filter(function (m) { return !m.isHost; });
+    var allGuestsReady = guests.length > 0 && guests.every(function (g) { return g.isReady; });
+    var minReq = state.minPlayers || 2;
+    var minReached = list.length >= minReq;
 
     if ($readySummaryText) {
       if (guests.length === 0) {
         $readySummaryText.textContent = "참가자 기다리는 중...";
         $readySummaryText.style.color = "var(--ink-dim)";
-      } else if (allGuestsReady) {
+      } else if (allGuestsReady && minReached) {
         $readySummaryText.textContent = "전원 준비 완료! 🚀";
         $readySummaryText.style.color = "var(--success)";
       } else {
-        const readyCount = guests.filter(g => g.isReady).length;
-        $readySummaryText.textContent = `준비 현황 (${readyCount}/${guests.length})`;
+        var readyCount = guests.filter(function (g) { return g.isReady; }).length;
+        $readySummaryText.textContent = "준비 현황 (" + readyCount + "/" + guests.length + ")";
         $readySummaryText.style.color = "var(--warning)";
       }
     }
 
     if (state.isHost && $hostStartBtn) {
-      if (guests.length > 0 && allGuestsReady) {
+      if (minReached && allGuestsReady) {
         $hostStartBtn.disabled = false;
         $hostStartBtn.className = "btn btn-success";
-        $hostStartBtn.textContent = `🚀 게임 시작! (1:1 매칭 시작하기)`;
+        $hostStartBtn.textContent = "🚀 게임 시작! (" + list.length + "명 매칭 시작)";
+        if ($hostNotice) $hostNotice.textContent = "최소 시작 인원을 충족했고 모든 참가자가 준비를 완료했습니다!";
       } else {
         $hostStartBtn.disabled = true;
         $hostStartBtn.className = "btn btn-primary";
-        $hostStartBtn.textContent = `🔒 참가자 준비 대기 중...`;
+        if (!minReached) {
+          $hostStartBtn.textContent = "🔒 최소 시작 인원 부족 (" + list.length + "/" + minReq + "명)";
+          if ($hostNotice) $hostNotice.textContent = "방 설정에서 정한 최소 " + minReq + "명 이상 모여야 시작할 수 있습니다.";
+        } else {
+          $hostStartBtn.textContent = "🔒 참가자 준비 대기 중...";
+          if ($hostNotice) $hostNotice.textContent = "방장을 제외한 모든 참가자가 [준비 완료]를 눌러야 합니다.";
+        }
       }
     }
   }
 
-  // =========================================================
-  // 7. 대기실 조작 핸들러
-  // =========================================================
-  document.getElementById("btnCreateRoomSubmit").addEventListener("click", () => {
-    state.nickname = document.getElementById("nicknameInput").value.trim() || "방장";
-    document.getElementById("myNickDisplay").textContent = state.nickname;
-
-    brokerClient.sendRaw({
-      action: "CREATE_ROOM",
-      nickname: state.nickname,
-      playerId: state.myId
-    });
-  });
-
- // [방 코드 숫자 4자리 실시간 제한]
-  const $joinCodeInput = document.getElementById("joinRoomCodeInput");
-  if ($joinCodeInput) {
-    $joinCodeInput.addEventListener("input", function () {
-      this.value = this.value.replace(/[^0-9]/g, "").slice(0, 4);
-    });
-  }
-
-  // [서버 검증 방 입장 - 숫자 4자리 완성 검증]
-  document.getElementById("btnJoinRoomSubmit").addEventListener("click", () => {
-    state.nickname = document.getElementById("nicknameInput").value.trim() || "참가자";
-    document.getElementById("myNickDisplay").textContent = state.nickname;
-
-    const inputCode = document.getElementById("joinRoomCodeInput").value.trim();
-    if (!inputCode || inputCode.length !== 4 || !/^\d{4}$/.test(inputCode)) {
-      alert("입장할 방 코드는 숫자 4자리로 정확히 입력해주세요!");
-      if ($joinCodeInput) $joinCodeInput.focus();
-      return;
-    }
-
-    brokerClient.sendRaw({
-      action: "JOIN_ROOM",
-      roomCode: inputCode,
-      nickname: state.nickname,
-      playerId: state.myId
-    });
-  });
-
   function openWaitingRoomUi(code) {
-    document.getElementById("lobbyEntrySection").style.display = "none";
-    document.getElementById("lobbyWaitingRoomSection").style.display = "block";
+    var entry = document.getElementById("lobbyEntrySection");
+    var wait = document.getElementById("lobbyWaitingRoomSection");
+    var waitNotice = document.getElementById("waitingPlayerNotice");
+    if (waitNotice) waitNotice.style.display = "none";
 
-    document.getElementById("roomCodeDisplay").textContent = `#${code}`;
-    document.getElementById("roomCodeBanner").textContent = code;
+    if (entry) entry.style.display = "none";
+    if (wait) wait.style.display = "block";
 
-    if (state.isHost) {
-      document.getElementById("hostActionArea").style.display = "block";
-      document.getElementById("guestActionArea").style.display = "none";
-    } else {
-      document.getElementById("hostActionArea").style.display = "none";
-      document.getElementById("guestActionArea").style.display = "block";
-    }
+    var titleEl = document.getElementById("waitingRoomTitleDisplay");
+    var codeDisp = document.getElementById("roomCodeDisplay");
+    var codeBanner = document.getElementById("roomCodeBanner");
+    var minMaxTag = document.getElementById("waitingRoomMinMaxTag");
+
+    if (titleEl) titleEl.textContent = "🎮 " + escapeHtml(state.roomTitle || "대기실 로비");
+    if (codeDisp) codeDisp.textContent = "#" + code;
+    if (codeBanner) codeBanner.textContent = code;
+    if (minMaxTag) minMaxTag.textContent = "최소 " + (state.minPlayers || 2) + "명 시작 / 정원 " + (state.maxPlayers || 8) + "명";
+
+    var hostArea = document.getElementById("hostActionArea");
+    var guestArea = document.getElementById("guestActionArea");
+    if (hostArea) hostArea.style.display = state.isHost ? "block" : "none";
+    if (guestArea) guestArea.style.display = !state.isHost ? "block" : "none";
   }
 
-  document.getElementById("btnToggleReady").addEventListener("click", () => {
-    state.isReady = !state.isReady;
-    const $btn = document.getElementById("btnToggleReady");
-
-    if (state.isReady) {
-      $btn.className = "btn btn-danger";
-      $btn.textContent = "취소 (준비 해제)";
-      showToast("준비 완료! 방장의 시작을 기다립니다.");
-    } else {
-      $btn.className = "btn btn-success";
-      $btn.textContent = "✋ 준비 완료 (Ready)";
-      showToast("준비가 해제되었습니다.");
-    }
-
-    brokerClient.sendRaw({
-      action: "TOGGLE_READY",
-      roomCode: state.roomCode,
-      playerId: state.myId,
-      isReady: state.isReady
-    });
-  });
-
-  document.getElementById("btnStartGameMatching").addEventListener("click", () => {
-    brokerClient.sendRaw({
-      action: "START_GAME",
-      roomCode: state.roomCode,
-      playerId: state.myId
-    });
-  });
-
-  document.getElementById("btnCopyRoomCode").addEventListener("click", () => {
-    navigator.clipboard.writeText(state.roomCode).then(() => {
-      showToast(`방 코드 (#${state.roomCode})가 복사되었습니다!`);
-    });
-  });
-
-  document.getElementById("btnLeaveRoom").addEventListener("click", () => {
-    location.reload();
-  });
-
-  document.getElementById("btnShowCreateTab").addEventListener("click", () => {
-    document.getElementById("panelCreateRoom").style.display = "block";
-    document.getElementById("panelJoinRoom").style.display = "none";
-    document.getElementById("btnShowCreateTab").className = "btn btn-primary";
-    document.getElementById("btnShowJoinTab").className = "btn btn-outline";
-  });
-
-  document.getElementById("btnShowJoinTab").addEventListener("click", () => {
-    document.getElementById("panelCreateRoom").style.display = "none";
-    document.getElementById("panelJoinRoom").style.display = "block";
-    document.getElementById("btnShowCreateTab").className = "btn btn-outline";
-    document.getElementById("btnShowJoinTab").className = "btn btn-primary";
-  });
-
-  document.getElementById("btnOpenSecondTab").addEventListener("click", () => {
-    window.open(window.location.href, "_blank");
-  });
-
-  // =========================================================
-  // 8. 카드 덱 & 뷰 전환
-  // =========================================================
   function pickRandom(arr, n) {
-    const copy = arr.slice();
-    const res = [];
-    for (let i = 0; i < n && copy.length; i++) {
-      const idx = Math.floor(Math.random() * copy.length);
+    var copy = arr.slice();
+    var res = [];
+    for (var i = 0; i < n && copy.length; i++) {
+      var idx = Math.floor(Math.random() * copy.length);
       res.push(copy.splice(idx, 1)[0]);
     }
     return res;
   }
 
   function initHand() {
-    const v = pickRandom(MASTER_VALUE, 7);
-    const l = pickRandom(MASTER_LIFE, 3);
-    state.hand = v.concat(l).sort(() => Math.random() - 0.5);
+    var v = pickRandom(VALUE_POOL, 7);
+    var l = pickRandom(LIFE_POOL, 3);
+    state.hand = v.concat(l).sort(function () { return Math.random() - 0.5; });
     updateDashboard();
     renderHand();
+    saveSession();
   }
 
   function updateDashboard() {
-    const lifeCount = state.hand.filter(c => c.type === "LIFE").length;
-    const valueCount = state.hand.filter(c => c.type === "VALUE").length;
-    const expectancy = 70 + 5 * lifeCount;
-    const $lifeNum = document.getElementById("lifeNum");
+    var lifeCount = state.hand.filter(function (c) { return c.type === "LIFE"; }).length;
+    var valueCount = state.hand.filter(function (c) { return c.type === "VALUE"; }).length;
+    var expectancy = 70 + 5 * lifeCount;
+    var $lifeNum = document.getElementById("lifeNum");
     if ($lifeNum) $lifeNum.textContent = expectancy;
 
-    const $composition = document.getElementById("composition");
+    var $composition = document.getElementById("composition");
     if ($composition) {
-      $composition.innerHTML = `<span class="dot value"></span>가치 ${valueCount} · <span class="dot life"></span>생명 ${lifeCount}`;
+      $composition.innerHTML = '<span class="dot value"></span>가치 ' + valueCount + ' · <span class="dot life"></span>생명 ' + lifeCount;
     }
 
-    const $turnDisplay = document.getElementById("turnDisplay");
+    var $turnDisplay = document.getElementById("turnDisplay");
     if ($turnDisplay) $turnDisplay.textContent = state.currentTurn;
   }
 
-  function switchView(phase) {
+  function switchView(phase, isResume) {
+    ensureWaitingViewExists();
     state.currentPhase = phase;
-    const views = [
+    saveSession();
+
+    var views = [
       document.getElementById("phaseLobbyView"),
       document.getElementById("phase1View"),
       document.getElementById("phase2View"),
       document.getElementById("phase3View"),
-      document.getElementById("phase4View")
+      document.getElementById("phase4View"),
+      document.getElementById("phaseWaitingView")
     ];
-    views.forEach(v => { if (v) v.classList.remove("active"); });
+    views.forEach(function (v) { if (v) v.classList.remove("active"); });
 
-    for (let i = 1; i <= 4; i++) {
-      const step = document.getElementById(`stepIndicator${i}`);
+    for (var i = 1; i <= 4; i++) {
+      var step = document.getElementById("stepIndicator" + i);
       if (step) step.classList.toggle("active", i === phase);
     }
 
-    const $turnBadgeWrap = document.getElementById("turnBadgeWrap");
-    const $stepIndicatorWrap = document.getElementById("stepIndicatorWrap");
+    var $turnBadgeWrap = document.getElementById("turnBadgeWrap");
+    var $stepIndicatorWrap = document.getElementById("stepIndicatorWrap");
 
     if (phase === 0) {
       if (views[0]) views[0].classList.add("active");
       if ($turnBadgeWrap) $turnBadgeWrap.style.display = "none";
       if ($stepIndicatorWrap) $stepIndicatorWrap.style.display = "none";
+      window.loadRoomsFromDb();
+    } else if (phase === 999) {
+      clearInterval(state.timerInterval);
+      if (views[5]) views[5].classList.add("active");
+      if ($turnBadgeWrap) $turnBadgeWrap.style.display = "inline-flex";
+      if ($stepIndicatorWrap) $stepIndicatorWrap.style.display = "flex";
     } else if (phase === 1) {
       if (views[1]) views[1].classList.add("active");
       if ($turnBadgeWrap) $turnBadgeWrap.style.display = "inline-flex";
       if ($stepIndicatorWrap) $stepIndicatorWrap.style.display = "flex";
-      const b = document.getElementById("inspectTurnBadge");
-      if (b) b.textContent = `${state.currentTurn}턴`;
-      startInspectTimer();
+      var b = document.getElementById("inspectTurnBadge");
+      if (b) b.textContent = state.currentTurn + "턴";
+      startInspectTimer(Boolean(isResume));
     } else if (phase === 2) {
       if (views[2]) views[2].classList.add("active");
       if ($turnBadgeWrap) $turnBadgeWrap.style.display = "inline-flex";
       if ($stepIndicatorWrap) $stepIndicatorWrap.style.display = "flex";
-      const b = document.getElementById("dialogueTurnBadge");
-      if (b) b.textContent = `${state.currentTurn}턴`;
-      startDialogueTimer();
+      var b2 = document.getElementById("dialogueTurnBadge");
+      if (b2) b2.textContent = state.currentTurn + "턴";
+      startDialogueTimer(Boolean(isResume));
 
-      const valCards = state.hand.filter(c => c.type === "VALUE");
+      var valCards = state.hand.filter(function (c) { return c.type === "VALUE"; });
       if (valCards.length) {
-        const topic = valCards[(state.currentTurn - 1) % valCards.length];
-        const qEl = document.getElementById("topicQuestionText");
-        if (qEl) qEl.textContent = `"${topic.question}" (가치관: ${topic.name})`;
+        var topic = valCards[(state.currentTurn - 1) % valCards.length];
+        var qEl = document.getElementById("topicQuestionText");
+        if (qEl) qEl.textContent = '"' + escapeHtml(topic.question) + '" (가치관: ' + escapeHtml(topic.name) + ')';
       }
 
-      // 채팅창 입력에 포커스
-      setTimeout(() => {
-        const $chatInput = document.getElementById("chatInput");
+      setTimeout(function () {
+        var $chatInput = document.getElementById("chatInput");
         if ($chatInput) $chatInput.focus();
       }, 100);
     } else if (phase === 3) {
       if (views[3]) views[3].classList.add("active");
       if ($turnBadgeWrap) $turnBadgeWrap.style.display = "inline-flex";
       if ($stepIndicatorWrap) $stepIndicatorWrap.style.display = "flex";
-      const b = document.getElementById("exchangeTurnBadge");
-      if (b) b.textContent = `${state.currentTurn}턴`;
+      var b3 = document.getElementById("exchangeTurnBadge");
+      if (b3) b3.textContent = state.currentTurn + "턴";
       state.selectedGiveCardIds = [];
       state.mySubmittedCards = null;
       state.partnerGiveCards = null;
+      var $peerStatusText = document.getElementById("peerStatusText");
+      if ($peerStatusText) $peerStatusText.textContent = "상대방과 실시간 맞교환 대기 중...";
       renderGiveCardsGrid();
     } else if (phase === 4) {
+      clearInterval(state.timerInterval);
       if (views[4]) views[4].classList.add("active");
       if ($turnBadgeWrap) $turnBadgeWrap.style.display = "inline-flex";
       if ($stepIndicatorWrap) $stepIndicatorWrap.style.display = "flex";
@@ -579,95 +1092,127 @@
     renderHand();
   }
 
-  // =========================================================
-  // 9. 타이머
-  // =========================================================
-  function startInspectTimer() {
+  function startInspectTimer(isResume) {
     clearInterval(state.timerInterval);
-    state.timer = 10;
-    const $countdownNum = document.getElementById("countdownNum");
-    const $matchProgressBar = document.getElementById("matchProgressBar");
-    if ($countdownNum) $countdownNum.textContent = `${state.timer}초`;
-    if ($matchProgressBar) $matchProgressBar.style.width = "100%";
 
-    state.timerInterval = setInterval(() => {
-      state.timer--;
-      if ($countdownNum) $countdownNum.textContent = `${state.timer}초`;
-      if ($matchProgressBar) $matchProgressBar.style.width = `${(state.timer / 10) * 100}%`;
+    if (isResume && state.inspectEndTime) {
+      var remaining = Math.max(0, Math.ceil((state.inspectEndTime - Date.now()) / 1000));
+      if (remaining <= 0) {
+        state.inspectEndTime = null;
+        saveSession();
+        switchView(2, false);
+        return;
+      }
+      state.timer = remaining;
+    } else {
+      state.timer = 10;
+      state.inspectEndTime = Date.now() + 10000;
+      saveSession();
+    }
+
+    var $countdownNum = document.getElementById("countdownNum");
+    var $matchProgressBar = document.getElementById("matchProgressBar");
+    if ($countdownNum) $countdownNum.textContent = state.timer + "초";
+    if ($matchProgressBar) $matchProgressBar.style.width = (state.timer / 10 * 100) + "%";
+
+    state.timerInterval = setInterval(function () {
+      var remaining = Math.max(0, Math.ceil((state.inspectEndTime - Date.now()) / 1000));
+      state.timer = remaining;
+      if ($countdownNum) $countdownNum.textContent = state.timer + "초";
+      if ($matchProgressBar) $matchProgressBar.style.width = (state.timer / 10 * 100) + "%";
+
       if (state.timer <= 0) {
         clearInterval(state.timerInterval);
-        switchView(2);
+        state.inspectEndTime = null;
+        saveSession();
+        switchView(2, false);
       }
-    }, 1000);
+    }, 500);
   }
 
-  function startDialogueTimer() {
+  function startDialogueTimer(isResume) {
     clearInterval(state.timerInterval);
-    state.timer = 60;
+
+    if (isResume && state.dialogueEndTime) {
+      var remaining = Math.max(0, Math.ceil((state.dialogueEndTime - Date.now()) / 1000));
+      if (remaining <= 0) {
+        state.dialogueEndTime = null;
+        saveSession();
+        switchView(3, false);
+        return;
+      }
+      state.timer = remaining;
+    } else {
+      state.timer = 60;
+      state.dialogueEndTime = Date.now() + 60000;
+      saveSession();
+    }
+
     updateDialogueTimerDisplay();
 
-    state.timerInterval = setInterval(() => {
-      state.timer--;
+    state.timerInterval = setInterval(function () {
+      var remaining = Math.max(0, Math.ceil((state.dialogueEndTime - Date.now()) / 1000));
+      state.timer = remaining;
       updateDialogueTimerDisplay();
+
       if (state.timer <= 0) {
         clearInterval(state.timerInterval);
-        switchView(3);
+        state.dialogueEndTime = null;
+        saveSession();
+        switchView(3, false);
       }
-    }, 1000);
+    }, 500);
   }
 
   function updateDialogueTimerDisplay() {
-    const mins = String(Math.floor(state.timer / 60)).padStart(2, "0");
-    const secs = String(state.timer % 60).padStart(2, "0");
-    const $dialogueTimer = document.getElementById("dialogueTimer");
-    if ($dialogueTimer) $dialogueTimer.textContent = `⏱ ${mins}:${secs}`;
+    var mins = String(Math.floor(state.timer / 60)).padStart(2, "0");
+    var secs = String(state.timer % 60).padStart(2, "0");
+    var $dialogueTimer = document.getElementById("dialogueTimer");
+    if ($dialogueTimer) $dialogueTimer.textContent = "⏱ " + mins + ":" + secs;
   }
 
-  // =========================================================
-  // 10. 실시간 채팅 기능 (완벽 입력 & 전송 보장)
-  // =========================================================
   window.sendUserChat = function () {
-    const $chatInput = document.getElementById("chatInput");
+    var $chatInput = document.getElementById("chatInput");
     if (!$chatInput) return;
-    const text = $chatInput.value.trim();
+    var text = $chatInput.value.trim();
     if (!text) return;
 
-    // 1) 내 메시지 화면에 추가
     appendChatMsg(text, state.nickname, true);
     $chatInput.value = "";
     $chatInput.focus();
 
-    // 2) 실제 1:1 매칭 상대에게 브로커 전송
     if (state.pairId && state.roomCode) {
-      publishToPair("CHAT_MSG", { text });
-    } else {
-      // [테스트 모드일 때] 1초 후 가상 상대방("지우")의 자동 답장
-      setTimeout(() => {
-        const dummyReplies = [
-          "정말 공감되는 말씀이에요!",
-          "저도 그 가치관이 삶에서 가장 중요하다고 생각해요.",
-          "대화 나눠보니 저에게 꼭 필요한 생각 같아요. 카드 교환해봐요!",
-          "말씀을 듣고 보니 새로운 시각이 열리네요 :)"
-        ];
-        const reply = dummyReplies[Math.floor(Math.random() * dummyReplies.length)];
-        appendChatMsg(reply, state.partnerName || "지우", false);
-      }, 1000);
+      publishToPair("CHAT_MSG", { text: text });
+    }
+
+    if (supabaseClient) {
+      supabaseClient
+        .from("messages")
+        .insert([{
+          room_code: state.roomCode || "lobby",
+          sender_name: state.nickname,
+          message: text
+        }])
+        .then(function () {})
+        .catch(function () {});
     }
   };
 
   window.sendPresetMsg = function (presetText) {
-    const $chatInput = document.getElementById("chatInput");
-    if ($chatInput) $chatInput.value = presetText;
-    window.sendUserChat();
+    var $chatInput = document.getElementById("chatInput");
+    if ($chatInput) {
+      $chatInput.value = presetText;
+      window.sendUserChat();
+    }
   };
 
   function appendChatMsg(text, sender, isMe) {
-    const $chatBox = document.getElementById("chatBox");
+    var $chatBox = document.getElementById("chatBox");
     if (!$chatBox) return;
-    const msg = document.createElement("div");
-    msg.className = `chat-msg ${isMe ? "me" : "peer"}`;
+    var msg = document.createElement("div");
+    msg.className = "chat-msg " + (isMe ? "me" : "peer");
     if (!isMe) {
-      msg.innerHTML = `<b>${sender}</b>: ${text}`;
+      msg.innerHTML = "<b>" + escapeHtml(sender) + "</b>: " + escapeHtml(text);
     } else {
       msg.textContent = text;
     }
@@ -675,66 +1220,41 @@
     $chatBox.scrollTop = $chatBox.scrollHeight;
   }
 
-  // 채팅 인풋 엔터 키 이벤트 (한글 IME 중복 방지)
-  const $chatInput = document.getElementById("chatInput");
-  if ($chatInput) {
-    $chatInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.isComposing) {
-        e.preventDefault();
-        window.sendUserChat();
-      }
-    });
-  }
-
-  const $chatSendBtn = document.getElementById("chatSendBtn");
-  if ($chatSendBtn) {
-    $chatSendBtn.addEventListener("click", window.sendUserChat);
-  }
-
-  // =========================================================
-  // 11. 카드 맞교환
-  // =========================================================
   function renderGiveCardsGrid() {
-    const $giveCardsGrid = document.getElementById("giveCardsGrid");
-    const $confirmGiveBtn = document.getElementById("confirmGiveBtn");
+    var $giveCardsGrid = document.getElementById("giveCardsGrid");
+    var $confirmGiveBtn = document.getElementById("confirmGiveBtn");
     if (!$giveCardsGrid || !$confirmGiveBtn) return;
 
-    const count = state.selectedGiveCardIds.length;
-    const $giveCountNum = document.getElementById("giveCountNum");
+    var count = state.selectedGiveCardIds.length;
+    var $giveCountNum = document.getElementById("giveCountNum");
     if ($giveCountNum) $giveCountNum.textContent = count;
 
     if (count === 0) {
-      $giveCardsGrid.innerHTML = `
-        <div class="give-cards-empty">
-          👇 화면 하단 손패에서 <b style="color: var(--accent-soft);">선물할 카드</b>를 클릭하세요. (1장 이상 선택 가능)
-        </div>
-      `;
+      $giveCardsGrid.innerHTML = '<div class="give-cards-empty">👇 화면 하단 손패에서 <b style="color: var(--accent-soft);">선물할 카드</b>를 클릭하세요. (1장 이상 선택 가능)</div>';
       $confirmGiveBtn.disabled = true;
       $confirmGiveBtn.textContent = "선물할 카드를 손패에서 선택하세요";
       return;
     }
 
-    $giveCardsGrid.innerHTML = state.selectedGiveCardIds.map(id => {
-      const card = state.hand.find(c => c.id === id);
+    $giveCardsGrid.innerHTML = state.selectedGiveCardIds.map(function (id) {
+      var card = state.hand.find(function (c) { return c.id === id; });
       if (!card) return "";
-      const isLife = card.type === "LIFE";
-      return `
-        <div class="give-mini-card">
-          <button class="gm-remove" onclick="event.stopPropagation(); removeGiveCard('${card.id}')">✕</button>
-          <div class="gm-top">${isLife ? "생명 카드" : card.category}</div>
-          <div class="gm-name">${card.name}</div>
-          <div class="gm-suit">${isLife ? "♥" : "◆"}</div>
-        </div>
-      `;
+      var isLife = card.type === "LIFE";
+      return '<div class="give-mini-card">' +
+        '<button type="button" class="gm-remove" onclick="event.stopPropagation(); removeGiveCard(\'' + card.id + '\')">✕</button>' +
+        '<div class="gm-top">' + (isLife ? "생명 카드" : escapeHtml(card.category)) + '</div>' +
+        '<div class="gm-name">' + escapeHtml(card.name) + '</div>' +
+        '<div class="gm-suit">' + (isLife ? "♥" : "◆") + '</div>' +
+        '</div>';
     }).join("");
 
     $confirmGiveBtn.disabled = false;
-    $confirmGiveBtn.textContent = `🎁 선택한 카드 (${count}장) 선물 확정하기`;
+    $confirmGiveBtn.textContent = "🎁 선택한 카드 (" + count + "장) 선물 확정하기";
   }
 
   window.removeGiveCard = function (cardId) {
     if (state.mySubmittedCards) return;
-    const idx = state.selectedGiveCardIds.indexOf(cardId);
+    var idx = state.selectedGiveCardIds.indexOf(cardId);
     if (idx > -1) {
       state.selectedGiveCardIds.splice(idx, 1);
       renderGiveCardsGrid();
@@ -744,11 +1264,11 @@
 
   function checkAndFinalizeTrade() {
     if (state.mySubmittedCards && state.partnerGiveCards) {
-      const givenCards = state.mySubmittedCards;
-      const receivedCards = state.partnerGiveCards;
+      var givenCards = state.mySubmittedCards;
+      var receivedCards = state.partnerGiveCards;
 
-      const givenIds = givenCards.map(c => c.id);
-      state.hand = state.hand.filter(c => !givenIds.includes(c.id)).concat(receivedCards);
+      var givenIds = givenCards.map(function (c) { return c.id; });
+      state.hand = state.hand.filter(function (c) { return !givenIds.includes(c.id); }).concat(receivedCards);
       updateDashboard();
       renderHand();
 
@@ -757,97 +1277,108 @@
       state.turnHistory.push({
         turn: state.currentTurn,
         partner: state.partnerName,
-        gave: givenCards.map(c => c.name).join(", "),
-        received: receivedCards.map(c => c.name).join(", ")
+        gave: givenCards.map(function (c) { return c.name; }).join(", "),
+        received: receivedCards.map(function (c) { return c.name; }).join(", ")
       });
+      saveSession();
     }
   }
 
   function openReceiveModal(receivedCards) {
-    const card = receivedCards[0];
-    const $receiveModal = document.getElementById("receiveModal");
-    document.getElementById("receivePeerName").textContent = state.partnerName;
-    document.getElementById("receiveCardTitle").textContent = receivedCards.map(c => c.name).join(", ");
-    document.getElementById("receiveCardDesc").textContent = card.description;
+    var card = receivedCards[0];
+    var $receiveModal = document.getElementById("receiveModal");
+    var peerEl = document.getElementById("receivePeerName");
+    var titleEl = document.getElementById("receiveCardTitle");
+    var descEl = document.getElementById("receiveCardDesc");
 
-    const isLife = card.type === "LIFE";
-    const $showcase = document.getElementById("receiveCardShowcase");
-    if ($showcase) $showcase.className = `receive-card-showcase ${card.type.toLowerCase()}`;
-    document.getElementById("rcLabel").textContent = isLife ? "생명 카드" : "가치관 카드";
-    document.getElementById("rcName").textContent = card.name;
-    document.getElementById("rcCat").textContent = isLife ? card.effect : card.category;
-    document.getElementById("rcSuit").textContent = isLife ? "♥" : "◆";
+    if (peerEl) peerEl.textContent = state.partnerName;
+    if (titleEl) titleEl.textContent = receivedCards.map(function (c) { return c.name; }).join(", ");
+    if (descEl) descEl.textContent = card.description;
 
-    const $lifeEffect = document.getElementById("receiveLifeEffect");
-    if (isLife) {
+    var isLife = card.type === "LIFE";
+    var $showcase = document.getElementById("receiveCardShowcase");
+    if ($showcase) $showcase.className = "receive-card-showcase " + card.type.toLowerCase();
+
+    var rcLabel = document.getElementById("rcLabel");
+    var rcName = document.getElementById("rcName");
+    var rcCat = document.getElementById("rcCat");
+    var rcSuit = document.getElementById("rcSuit");
+    if (rcLabel) rcLabel.textContent = isLife ? "생명 카드" : "가치관 카드";
+    if (rcName) rcName.textContent = card.name;
+    if (rcCat) rcCat.textContent = isLife ? card.effect : card.category;
+    if (rcSuit) rcSuit.textContent = isLife ? "♥" : "◆";
+
+    var $lifeEffect = document.getElementById("receiveLifeEffect");
+    var $lifeVal = document.getElementById("receiveLifeEffectVal");
+    var $curLife = document.getElementById("lifeNum");
+    if (isLife && $lifeEffect && $lifeVal) {
       $lifeEffect.style.display = "block";
-      document.getElementById("receiveLifeEffectVal").textContent = `${card.effect} 연장 (현재: ${document.getElementById("lifeNum").textContent}세)`;
-    } else {
+      $lifeVal.textContent = card.effect + " 연장 (현재: " + ($curLife ? $curLife.textContent : 85) + "세)";
+    } else if ($lifeEffect) {
       $lifeEffect.style.display = "none";
     }
 
-    const $btn = document.getElementById("receiveConfirmBtn");
+    var $btn = document.getElementById("receiveConfirmBtn");
     if ($btn) {
       $btn.disabled = false;
       if (state.currentTurn < state.totalTurns) {
-        $btn.textContent = `확인하고 ${state.currentTurn + 1}턴으로 이동 ➔`;
+        var isMulti = state.members && state.members.length > 2;
+        $btn.textContent = isMulti
+          ? "확인하고 새로운 상대방과 " + (state.currentTurn + 1) + "턴 매칭하기 ➔"
+          : "확인하고 " + (state.currentTurn + 1) + "턴으로 이동 ➔";
       } else {
-        $btn.textContent = `🎉 5턴 최종 완료! 디브리핑 작성하기 ➔`;
+        $btn.textContent = "🎉 5턴 최종 완료! 디브리핑 작성하기 ➔";
       }
     }
 
     if ($receiveModal) $receiveModal.classList.add("show");
   }
 
-  // =========================================================
-  // 12. 손패 렌더링
-  // =========================================================
   function renderHand() {
-    const $hand = document.getElementById("hand");
+    var $hand = document.getElementById("hand");
     if (!$hand) return;
     if (!state.hand.length) {
-      $hand.innerHTML = `<div class="empty-state">게임이 시작되면 10장의 카드가 분배됩니다.</div>`;
+      $hand.innerHTML = '<div class="empty-state">게임이 시작되면 10장의 카드가 분배됩니다.</div>';
       return;
     }
-    const n = state.hand.length;
-    const maxSpreadDeg = Math.min(46, n * 4.6);
-    const step = n > 1 ? maxSpreadDeg / (n - 1) : 0;
-    const startDeg = -maxSpreadDeg / 2;
-    const cardWidth = 88;
-    const overlapPx = Math.min(54, cardWidth * 0.72);
-    const totalWidth = cardWidth + (n - 1) * (cardWidth - overlapPx);
-    const startX = -totalWidth / 2 + cardWidth / 2;
+    var n = state.hand.length;
+    var maxSpreadDeg = Math.min(46, n * 4.6);
+    var step = n > 1 ? maxSpreadDeg / (n - 1) : 0;
+    var startDeg = -maxSpreadDeg / 2;
+    var cardWidth = 88;
+    var overlapPx = Math.min(54, cardWidth * 0.72);
+    var totalWidth = cardWidth + (n - 1) * (cardWidth - overlapPx);
+    var startX = -totalWidth / 2 + cardWidth / 2;
 
-    $hand.innerHTML = state.hand.map((card, i) => {
-      const deg = startDeg + step * i;
-      const x = startX + i * (cardWidth - overlapPx);
-      const arcLift = -Math.pow(Math.abs(i - (n - 1) / 2) / ((n - 1) / 2 || 1), 2) * 24;
-      const finalTransform = `translateX(${x}px) translateY(${-arcLift}px) rotate(${deg}deg)`;
-      const isSelected = (state.currentPhase === 3)
+    $hand.innerHTML = state.hand.map(function (card, i) {
+      var deg = startDeg + step * i;
+      var x = startX + i * (cardWidth - overlapPx);
+      var arcLift = -Math.pow(Math.abs(i - (n - 1) / 2) / ((n - 1) / 2 || 1), 2) * 24;
+      var finalTransform = "translateX(" + x + "px) translateY(" + (-arcLift) + "px) rotate(" + deg + "deg)";
+      var isSelected = (state.currentPhase === 3)
         ? state.selectedGiveCardIds.includes(card.id)
         : (card.id === state.selectedCardId);
 
-      return `
-        <div class="card ${card.type.toLowerCase()} ${isSelected ? "selected" : ""}"
-             data-id="${card.id}"
-             style="--final-transform:${finalTransform}; transform:${finalTransform}; z-index:${i};"
-             onmouseover="this.style.transform='translateX(${x}px) translateY(-30px) rotate(0deg) scale(1.08)'"
-             onmouseout="this.style.transform='${finalTransform}'">
-          <div class="type-label">${card.type === "VALUE" ? "가치관" : "생명"}</div>
-          <div class="name">${card.name}</div>
-          <div class="suit">${card.type === "VALUE" ? "◆" : "♥"}</div>
-        </div>`;
+      return '<div class="card ' + card.type.toLowerCase() + (isSelected ? " selected" : "") + '"' +
+             ' data-id="' + card.id + '"' +
+             ' style="--final-transform:' + finalTransform + '; transform:' + finalTransform + '; z-index:' + i + ';"' +
+             ' onmouseover="this.style.transform=\'translateX(' + x + 'px) translateY(-30px) rotate(0deg) scale(1.08)\'"' +
+             ' onmouseout="this.style.transform=\'' + finalTransform + '\'">' +
+             '<div class="type-label">' + (card.type === "VALUE" ? "가치관" : "생명") + '</div>' +
+             '<div class="name">' + escapeHtml(card.name) + '</div>' +
+             '<div class="suit">' + (card.type === "VALUE" ? "◆" : "♥") + '</div>' +
+             '</div>';
     }).join("");
 
-    $hand.querySelectorAll(".card").forEach(el => {
-      el.addEventListener("click", () => handleCardClick(el.dataset.id));
+    $hand.querySelectorAll(".card").forEach(function (el) {
+      el.addEventListener("click", function () { handleCardClick(el.dataset.id); });
     });
   }
 
   function handleCardClick(cardId) {
     if (state.currentPhase === 3) {
       if (state.mySubmittedCards) return;
-      const idx = state.selectedGiveCardIds.indexOf(cardId);
+      var idx = state.selectedGiveCardIds.indexOf(cardId);
       if (idx > -1) state.selectedGiveCardIds.splice(idx, 1);
       else state.selectedGiveCardIds.push(cardId);
       renderGiveCardsGrid();
@@ -855,80 +1386,73 @@
       return;
     }
 
-    const card = state.hand.find(c => c.id === cardId);
+    var card = state.hand.find(function (c) { return c.id === cardId; });
     if (!card) return;
     state.selectedCardId = cardId;
     renderHand();
 
-    const isLife = card.type === "LIFE";
-    const $detailModal = document.getElementById("detailModal");
-    const $detailModalBody = document.getElementById("detailModalBody");
+    var isLife = card.type === "LIFE";
+    var $detailModal = document.getElementById("detailModal");
+    var $detailModalBody = document.getElementById("detailModalBody");
     if ($detailModalBody) {
-      $detailModalBody.innerHTML = `
-        <button class="modal-close" id="detailClose2">✕</button>
-        <div class="cd-head" style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
-          <span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; background:${isLife ? 'rgba(239,139,92,0.2)' : 'rgba(47,191,166,0.2)'}; color:${isLife ? 'var(--life)' : 'var(--value)'};">
-            ${isLife ? "생명 카드" : "가치관 카드"}
-          </span>
-          ${!isLife ? `<span style="font-size:11.5px; color:var(--ink-dim); margin-left:auto;">${card.category}</span>` : ""}
-        </div>
-        <div style="font-size:20px; font-weight:900; margin-bottom:6px;">${card.name}</div>
-        <p style="color:var(--ink-dim); font-size:13px; line-height:1.6; margin-bottom:14px;">${card.description}</p>
-        <div style="background:rgba(255,255,255,0.04); padding:10px 12px; border-radius:10px; font-size:12.5px;">
-          ${isLife
-            ? `<span style="color:var(--ink-faint);">기대수명 효과: </span><b style="color:var(--accent-soft); font-size:14px;">${card.effect}</b>`
-            : `<span style="color:var(--ink-faint);">대화 질문: </span><br><b>“${card.question}”</b>`}
-        </div>`;
+      $detailModalBody.innerHTML = '<button type="button" class="modal-close" id="detailClose2">✕</button>' +
+        '<div class="cd-head" style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">' +
+        '<span style="font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; background:' + (isLife ? 'rgba(239,139,92,0.2)' : 'rgba(47,191,166,0.2)') + '; color:' + (isLife ? 'var(--life)' : 'var(--value)') + ';">' +
+        (isLife ? "생명 카드" : "가치관 카드") + '</span>' +
+        (!isLife ? '<span style="font-size:11.5px; color:var(--ink-dim); margin-left:auto;">' + escapeHtml(card.category) + '</span>' : '') +
+        '</div>' +
+        '<div style="font-size:20px; font-weight:900; margin-bottom:6px;">' + escapeHtml(card.name) + '</div>' +
+        '<p style="color:var(--ink-dim); font-size:13px; line-height:1.6; margin-bottom:14px;">' + escapeHtml(card.description) + '</p>' +
+        '<div style="background:rgba(255,255,255,0.04); padding:10px 12px; border-radius:10px; font-size:12.5px;">' +
+        (isLife
+          ? '<span style="color:var(--ink-faint);">기대수명 효과: </span><b style="color:var(--accent-soft); font-size:14px;">' + escapeHtml(card.effect) + '</b>'
+          : '<span style="color:var(--ink-faint);">대화 질문: </span><br><b>“' + escapeHtml(card.question) + '”</b>') +
+        '</div>';
       if ($detailModal) $detailModal.classList.add("show");
-      document.getElementById("detailClose2").addEventListener("click", () => $detailModal.classList.remove("show"));
+      var closeBtn = document.getElementById("detailClose2");
+      if (closeBtn) closeBtn.addEventListener("click", function () { $detailModal.classList.remove("show"); });
     }
   }
 
-  // =========================================================
-  // 13. [고도화] 디브리핑 화면 렌더링 (기능 1, 2, 3 구현)
-  // =========================================================
   function renderDebrief() {
-    const lifeCards = state.hand.filter(c => c.type === "LIFE");
-    const valCards = state.hand.filter(c => c.type === "VALUE");
-    const lifeCount = lifeCards.length;
-    const valueCount = valCards.length;
-    const finalLife = 70 + 5 * lifeCount;
+    var lifeCards = state.hand.filter(function (c) { return c.type === "LIFE"; });
+    var valCards = state.hand.filter(function (c) { return c.type === "VALUE"; });
+    var lifeCount = lifeCards.length;
+    var valueCount = valCards.length;
+    var finalLife = 70 + 5 * lifeCount;
 
-    const $finalLifeExp = document.getElementById("finalLifeExp");
-    const $finalValueCount = document.getElementById("finalValueCount");
-    const $finalLifeCount = document.getElementById("finalLifeCount");
-    const $finalHandCountText = document.getElementById("finalHandCountText");
+    var $finalLifeExp = document.getElementById("finalLifeExp");
+    var $finalValueCount = document.getElementById("finalValueCount");
+    var $finalLifeCount = document.getElementById("finalLifeCount");
+    var $finalHandCountText = document.getElementById("finalHandCountText");
 
-    if ($finalLifeExp) $finalLifeExp.textContent = `${finalLife}세`;
-    if ($finalValueCount) $finalValueCount.textContent = `${valueCount}종`;
-    if ($finalLifeCount) $finalLifeCount.textContent = `${lifeCount}장`;
+    if ($finalLifeExp) $finalLifeExp.textContent = finalLife + "세";
+    if ($finalValueCount) $finalValueCount.textContent = valueCount + "종";
+    if ($finalLifeCount) $finalLifeCount.textContent = lifeCount + "장";
     if ($finalHandCountText) $finalHandCountText.textContent = state.hand.length;
 
-    const categoryCounts = { "관계": 0, "성취": 0, "안정": 0, "윤리": 0, "성장": 0, "자유": 0 };
-    valCards.forEach(c => {
+    var categoryCounts = { "관계": 0, "성취": 0, "안정": 0, "윤리": 0, "성장": 0, "자유": 0 };
+    valCards.forEach(function (c) {
       if (categoryCounts.hasOwnProperty(c.category)) {
         categoryCounts[c.category]++;
       }
     });
 
-    // 기능 1: 인생 유형 칭호 & 레이더 차트 & 카드 컬렉션
     updatePersonaArchetype(categoryCounts);
     drawRadarChart("radarChartCanvas", categoryCounts);
     renderFinalHandCards();
-
-    // 기능 2: 5턴 스토리 인포그래픽 & 딜레마 피드백
     renderInfographicTimeline();
-    renderLifeDilemmaFeedback(lifeCount, valueCount);
+    renderLifeDilemmaFeedback(lifeCount);
   }
 
   function updatePersonaArchetype(catCounts) {
-    const sortedCats = Object.entries(catCounts).sort((a, b) => b[1] - a[1]);
-    const topCat = sortedCats[0][0];
-    const topCount = sortedCats[0][1];
+    var sortedCats = Object.entries(catCounts).sort(function (a, b) { return b[1] - a[1]; });
+    var topCat = sortedCats[0][0];
+    var topCount = sortedCats[0][1];
 
-    let tag = "🌟 조화로운 탐색가";
-    let title = '"균형과 깊이를 품은 삶의 항해자"';
-    let desc = "다양한 삶의 가치관을 고루 지켜내며, 타인과의 대화 속에서 균형 잡힌 시각을 유지했습니다.";
+    var tag = "🌟 조화로운 탐색가";
+    var title = '"균형과 깊이를 품은 삶의 항해자"';
+    var desc = "다양한 삶의 가치관을 고루 지켜내며, 타인과의 대화 속에서 균형 잡힌 시각을 유지했습니다.";
 
     if (topCount >= 2) {
       if (topCat === "성취" || topCat === "성장") {
@@ -954,38 +1478,37 @@
       }
     }
 
-    const $pTag = document.getElementById("personaTag");
-    const $pTitle = document.getElementById("personaTitle");
-    const $pDesc = document.getElementById("personaDesc");
+    var $pTag = document.getElementById("personaTag");
+    var $pTitle = document.getElementById("personaTitle");
+    var $pDesc = document.getElementById("personaDesc");
     if ($pTag) $pTag.textContent = tag;
     if ($pTitle) $pTitle.textContent = title;
     if ($pDesc) $pDesc.textContent = desc;
   }
 
   function drawRadarChart(canvasId, categoryCounts) {
-    const canvas = document.getElementById(canvasId);
+    var canvas = document.getElementById(canvasId);
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width;
-    const height = canvas.height;
+    var ctx = canvas.getContext("2d");
+    var width = canvas.width;
+    var height = canvas.height;
     ctx.clearRect(0, 0, width, height);
 
-    const categories = ["관계", "성취", "안정", "윤리", "성장", "자유"];
-    const values = categories.map(cat => categoryCounts[cat] || 0);
-    const maxVal = Math.max(3, ...values);
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const radius = Math.min(centerX, centerY) - 32;
-    const totalSides = categories.length;
+    var categories = ["관계", "성취", "안정", "윤리", "성장", "자유"];
+    var values = categories.map(function (cat) { return categoryCounts[cat] || 0; });
+    var maxVal = Math.max(3, Math.max.apply(null, values));
+    var centerX = width / 2;
+    var centerY = height / 2;
+    var radius = Math.min(centerX, centerY) - 32;
+    var totalSides = categories.length;
 
-    // 배경 그리드
-    for (let level = 1; level <= 3; level++) {
-      const r = (radius / 3) * level;
+    for (var level = 1; level <= 3; level++) {
+      var r = (radius / 3) * level;
       ctx.beginPath();
-      for (let i = 0; i < totalSides; i++) {
-        const angle = (Math.PI * 2 / totalSides) * i - Math.PI / 2;
-        const x = centerX + r * Math.cos(angle);
-        const y = centerY + r * Math.sin(angle);
+      for (var i = 0; i < totalSides; i++) {
+        var angle = (Math.PI * 2 / totalSides) * i - Math.PI / 2;
+        var x = centerX + r * Math.cos(angle);
+        var y = centerY + r * Math.sin(angle);
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
@@ -995,36 +1518,34 @@
       ctx.stroke();
     }
 
-    // 축 선 & 텍스트
-    for (let i = 0; i < totalSides; i++) {
-      const angle = (Math.PI * 2 / totalSides) * i - Math.PI / 2;
-      const x = centerX + radius * Math.cos(angle);
-      const y = centerY + radius * Math.sin(angle);
+    for (var i2 = 0; i2 < totalSides; i2++) {
+      var angle2 = (Math.PI * 2 / totalSides) * i2 - Math.PI / 2;
+      var x2 = centerX + radius * Math.cos(angle2);
+      var y2 = centerY + radius * Math.sin(angle2);
       ctx.beginPath();
       ctx.moveTo(centerX, centerY);
-      ctx.lineTo(x, y);
+      ctx.lineTo(x2, y2);
       ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
       ctx.stroke();
 
-      const labelX = centerX + (radius + 18) * Math.cos(angle);
-      const labelY = centerY + (radius + 16) * Math.sin(angle);
+      var labelX = centerX + (radius + 18) * Math.cos(angle2);
+      var labelY = centerY + (radius + 16) * Math.sin(angle2);
       ctx.fillStyle = "#9aa3ba";
       ctx.font = "bold 11px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(categories[i], labelX, labelY);
+      ctx.fillText(categories[i2], labelX, labelY);
     }
 
-    // 데이터 영역
     ctx.beginPath();
-    for (let i = 0; i < totalSides; i++) {
-      const val = values[i];
-      const r = (val / maxVal) * radius;
-      const angle = (Math.PI * 2 / totalSides) * i - Math.PI / 2;
-      const x = centerX + r * Math.cos(angle);
-      const y = centerY + r * Math.sin(angle);
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    for (var i3 = 0; i3 < totalSides; i3++) {
+      var val = values[i3];
+      var rData = (val / maxVal) * radius;
+      var angleData = (Math.PI * 2 / totalSides) * i3 - Math.PI / 2;
+      var xData = centerX + rData * Math.cos(angleData);
+      var yData = centerY + rData * Math.sin(angleData);
+      if (i3 === 0) ctx.moveTo(xData, yData);
+      else ctx.lineTo(xData, yData);
     }
     ctx.closePath();
     ctx.fillStyle = "rgba(47, 191, 166, 0.35)";
@@ -1033,14 +1554,14 @@
     ctx.lineWidth = 2.5;
     ctx.stroke();
 
-    for (let i = 0; i < totalSides; i++) {
-      const val = values[i];
-      const r = (val / maxVal) * radius;
-      const angle = (Math.PI * 2 / totalSides) * i - Math.PI / 2;
-      const x = centerX + r * Math.cos(angle);
-      const y = centerY + r * Math.sin(angle);
+    for (var i4 = 0; i4 < totalSides; i4++) {
+      var val2 = values[i4];
+      var rDot = (val2 / maxVal) * radius;
+      var angleDot = (Math.PI * 2 / totalSides) * i4 - Math.PI / 2;
+      var xDot = centerX + rDot * Math.cos(angleDot);
+      var yDot = centerY + rDot * Math.sin(angleDot);
       ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.arc(xDot, yDot, 4, 0, Math.PI * 2);
       ctx.fillStyle = "#a99bff";
       ctx.fill();
       ctx.strokeStyle = "#fff";
@@ -1050,48 +1571,42 @@
   }
 
   function renderFinalHandCards() {
-    const $container = document.getElementById("finalCardsDeck");
+    var $container = document.getElementById("finalCardsDeck");
     if (!$container) return;
 
-    $container.innerHTML = state.hand.map(card => {
-      const isLife = card.type === "LIFE";
-      return `
-        <div class="final-card-chip ${isLife ? 'life' : 'value'}" title="${card.description}">
-          <span>${isLife ? '♥' : '◆'}</span>
-          <span>${card.name}</span>
-          <span class="chip-cat">${isLife ? card.effect : card.category}</span>
-        </div>
-      `;
+    $container.innerHTML = state.hand.map(function (card) {
+      var isLife = card.type === "LIFE";
+      return '<div class="final-card-chip ' + (isLife ? 'life' : 'value') + '" title="' + escapeHtml(card.description) + '">' +
+        '<span>' + (isLife ? '♥' : '◆') + '</span>' +
+        '<span>' + escapeHtml(card.name) + '</span>' +
+        '<span class="chip-cat">' + escapeHtml(isLife ? card.effect : card.category) + '</span>' +
+        '</div>';
     }).join("");
   }
 
   function renderInfographicTimeline() {
-    const $timeline = document.getElementById("infographicTimeline");
+    var $timeline = document.getElementById("infographicTimeline");
     if (!$timeline) return;
 
     if (!state.turnHistory.length) {
-      $timeline.innerHTML = `<div style="color:var(--ink-faint); font-size:12px; text-align:center; padding:12px;">교환 기록이 없습니다.</div>`;
+      $timeline.innerHTML = '<div style="color:var(--ink-faint); font-size:12px; text-align:center; padding:12px;">교환 기록이 없습니다.</div>';
       return;
     }
 
-    $timeline.innerHTML = state.turnHistory.map(h => `
-      <div class="timeline-story-row">
-        <div class="story-left">
-          <span class="story-round-tag">${h.turn}턴</span>
-          <span class="story-peer-name">👤 ${h.partner}</span>
-        </div>
-        <div class="story-exchange-flow">
-          <span class="pill-gave">내가 줌: ${h.gave}</span>
-          <span style="color:var(--ink-faint); font-weight:900;">➔</span>
-          <span class="pill-received">받음: ${h.received}</span>
-        </div>
-      </div>
-    `).join("");
+    $timeline.innerHTML = state.turnHistory.map(function (h) {
+      return '<div class="timeline-story-row">' +
+        '<div class="story-left"><span class="story-round-tag">' + h.turn + '턴</span><span class="story-peer-name">👤 ' + escapeHtml(h.partner) + '</span></div>' +
+        '<div class="story-exchange-flow">' +
+        '<span class="pill-gave">내가 줌: ' + escapeHtml(h.gave) + '</span>' +
+        '<span style="color:var(--ink-faint); font-weight:900;">➔</span>' +
+        '<span class="pill-received">받음: ' + escapeHtml(h.received) + '</span>' +
+        '</div></div>';
+    }).join("");
   }
 
-  function renderLifeDilemmaFeedback(lifeCount, valueCount) {
-    const $title = document.getElementById("dilemmaTitle");
-    const $text = document.getElementById("dilemmaText");
+  function renderLifeDilemmaFeedback(lifeCount) {
+    var $title = document.getElementById("dilemmaTitle");
+    var $text = document.getElementById("dilemmaText");
     if (!$title || !$text) return;
 
     if (lifeCount >= 4) {
@@ -1107,22 +1622,168 @@
   }
 
   function showToast(msg) {
-    const $successMsg = document.getElementById("successMsg");
-    const $successBanner = document.getElementById("successBanner");
+    var $successMsg = document.getElementById("successMsg");
+    var $successBanner = document.getElementById("successBanner");
     if ($successMsg && $successBanner) {
       $successMsg.textContent = msg;
       $successBanner.classList.add("show");
-      setTimeout(() => $successBanner.classList.remove("show"), 3500);
+      setTimeout(function () { $successBanner.classList.remove("show"); }, 3500);
     }
   }
 
-  // =========================================================
-  // 14. 바로가기 및 버튼 이벤트 바인딩
-  // =========================================================
-  // [1] 디브리핑 테스트 바로가기 버튼
-  const $btnTestDebriefDirect = document.getElementById("btnTestDebriefDirect");
-  if ($btnTestDebriefDirect) {
-    $btnTestDebriefDirect.addEventListener("click", () => {
+  function on(id, event, handler) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener(event, handler);
+  }
+
+  // 11. UI 이벤트 바인딩
+  function initializeApp() {
+    ensureWaitingViewExists();
+
+    on("tabRoomList", "click", function () { window.switchLobbyTab("list"); });
+    on("tabCreateRoom", "click", function () { window.switchLobbyTab("create"); });
+    on("tabDirectJoin", "click", function () { window.switchLobbyTab("join"); });
+    on("btnShowCreateTab", "click", function () { window.switchLobbyTab("create"); });
+    on("btnShowJoinTab", "click", function () { window.switchLobbyTab("join"); });
+    on("btnRefreshRooms", "click", function () { window.loadRoomsFromDb(); });
+
+    var chkPrivate = document.getElementById("chkIsPrivate");
+    if (chkPrivate) {
+      chkPrivate.addEventListener("change", function () {
+        var wrap = document.getElementById("privatePassWrap");
+        if (wrap) wrap.style.display = this.checked ? "block" : "none";
+      });
+    }
+
+    on("btnCreateRoomSubmit", "click", window.handleCreateRoomSubmit);
+
+    var $joinCodeInput = document.getElementById("joinRoomCodeInput");
+    if ($joinCodeInput) {
+      $joinCodeInput.addEventListener("input", function () {
+        this.value = this.value.replace(/[^0-9]/g, "").slice(0, 4);
+      });
+    }
+
+    on("btnJoinRoomSubmit", "click", function () {
+      var inputCode = $joinCodeInput ? $joinCodeInput.value.trim() : "";
+      if (!inputCode || inputCode.length !== 4 || !/^\d{4}$/.test(inputCode)) {
+        alert("입장할 방 코드는 숫자 4자리로 정확히 입력해주세요!");
+        if ($joinCodeInput) $joinCodeInput.focus();
+        return;
+      }
+      executeJoinRoom(inputCode, null);
+    });
+
+    on("btnCancelPassword", "click", function () {
+      pendingPrivateRoom = null;
+      var modal = document.getElementById("passwordModal");
+      if (modal) modal.classList.remove("show");
+    });
+
+    on("btnConfirmPassword", "click", function () {
+      var input = document.getElementById("pwdModalInput");
+      var val = input ? input.value.trim() : "";
+      if (!pendingPrivateRoom) return;
+
+      var code = pendingPrivateRoom.code;
+      pendingPrivateRoom = null;
+      var modal = document.getElementById("passwordModal");
+      if (modal) modal.classList.remove("show");
+
+      executeJoinRoom(code, val);
+    });
+
+    on("btnToggleReady", "click", function () {
+      state.isReady = !state.isReady;
+      var $btn = document.getElementById("btnToggleReady");
+      if ($btn) {
+        if (state.isReady) {
+          $btn.className = "btn btn-danger";
+          $btn.textContent = "취소 (준비 해제)";
+          showToast("준비 완료! 방장의 시작을 기다립니다.");
+        } else {
+          $btn.className = "btn btn-success";
+          $btn.textContent = "✋ 준비 완료 (Ready)";
+          showToast("준비가 해제되었습니다.");
+        }
+      }
+
+      var me = state.members.find(function (m) { return m.id === state.myId; });
+      if (me) me.isReady = state.isReady;
+      renderMemberList();
+      saveSession();
+
+      brokerClient.sendRaw({
+        action: "TOGGLE_READY",
+        roomCode: state.roomCode,
+        playerId: state.myId,
+        isReady: state.isReady
+      });
+    });
+
+    on("btnStartGameMatching", "click", function () {
+      brokerClient.sendRaw({
+        action: "START_GAME",
+        roomCode: state.roomCode,
+        playerId: state.myId
+      });
+    });
+
+    on("btnCopyRoomCode", "click", function () {
+      if (state.roomCode && navigator.clipboard) {
+        navigator.clipboard.writeText(state.roomCode).then(function () {
+          showToast("방 코드 (#" + state.roomCode + ")가 복사되었습니다!");
+        });
+      }
+    });
+
+    on("btnLeaveRoom", "click", async function () {
+      var codeToLeave = state.roomCode;
+      var myIdToLeave = state.myId;
+      var nickToLeave = state.nickname;
+      var isSolo = state.members.length <= 1;
+
+      clearSession();
+
+      if (codeToLeave && isSolo) {
+        if (supabaseClient) {
+          try {
+            await supabaseClient.from("rooms").delete().eq("room_code", codeToLeave);
+          } catch (e) {}
+        }
+      }
+
+      if (codeToLeave) {
+        brokerClient.sendRaw({
+          action: "LEAVE_ROOM",
+          roomCode: codeToLeave,
+          playerId: myIdToLeave,
+          nickname: nickToLeave
+        });
+      }
+
+      state.roomCode = null;
+      state.isHost = false;
+      state.isReady = false;
+      state.isSittingOut = false;
+      state.members = [];
+      state.pairId = null;
+      state.partnerId = null;
+      state.inspectEndTime = null;
+      state.dialogueEndTime = null;
+
+      var waitSec = document.getElementById("lobbyWaitingRoomSection");
+      var entrySec = document.getElementById("lobbyEntrySection");
+      if (waitSec) waitSec.style.display = "none";
+      if (entrySec) entrySec.style.display = "block";
+
+      switchView(0, false);
+      window.switchLobbyTab("list");
+      window.loadRoomsFromDb();
+      showToast("대기실에서 퇴장했습니다.");
+    });
+
+    on("btnTestDebriefDirect", "click", function () {
       if (!state.hand.length) initHand();
       if (!state.turnHistory.length) {
         state.turnHistory = [
@@ -1133,137 +1794,182 @@
           { turn: 5, partner: "하은", gave: "명예", received: "정직" }
         ];
       }
-      switchView(4);
+      switchView(4, false);
       showToast("🧪 디브리핑 화면으로 즉시 이동했습니다!");
     });
-  }
 
-  // [2] 1:1 대화/채팅 테스트 바로가기 버튼
-  const $btnTestChatDirect = document.getElementById("btnTestChatDirect");
-  if ($btnTestChatDirect) {
-    $btnTestChatDirect.addEventListener("click", () => {
-      if (!state.hand.length) initHand();
-      state.partnerName = "지우";
-      state.currentTurn = 1;
-      document.getElementById("dialoguePeerName").textContent = state.partnerName;
-      switchView(2);
-      showToast("💬 1:1 대화/채팅 테스트 화면으로 이동했습니다!");
-    });
-  }
-
-  // 인게임 버튼들
-  const $btnSkipInspect = document.getElementById("btnSkipInspect");
-  if ($btnSkipInspect) {
-    $btnSkipInspect.addEventListener("click", () => {
+    on("btnSkipInspect", "click", function () {
       publishToPair("SKIP_INSPECT", {});
       clearInterval(state.timerInterval);
-      switchView(2);
+      state.inspectEndTime = null;
+      switchView(2, false);
     });
-  }
 
-  const $btnGoToTrade = document.getElementById("btnGoToTrade");
-  if ($btnGoToTrade) {
-    $btnGoToTrade.addEventListener("click", () => {
+    on("btnGoToTrade", "click", function () {
       publishToPair("SKIP_DIALOGUE", {});
       clearInterval(state.timerInterval);
-      switchView(3);
+      state.dialogueEndTime = null;
+      switchView(3, false);
     });
-  }
 
-  const $confirmGiveBtn = document.getElementById("confirmGiveBtn");
-  if ($confirmGiveBtn) {
-    $confirmGiveBtn.addEventListener("click", () => {
+    on("chatSendBtn", "click", window.sendUserChat);
+
+    var $chatInput = document.getElementById("chatInput");
+    if ($chatInput) {
+      $chatInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" && !e.isComposing) {
+          e.preventDefault();
+          window.sendUserChat();
+        }
+      });
+    }
+
+    on("confirmGiveBtn", "click", function () {
       if (state.selectedGiveCardIds.length === 0) return;
-      const cardsToSend = state.hand.filter(c => state.selectedGiveCardIds.includes(c.id));
+      var cardsToSend = state.hand.filter(function (c) { return state.selectedGiveCardIds.includes(c.id); });
       state.mySubmittedCards = cardsToSend;
 
       publishToPair("SUBMIT_GIVE_CARDS", { cards: cardsToSend });
-      $confirmGiveBtn.disabled = true;
-      $confirmGiveBtn.textContent = "✅ 선물 확정 완료! 상대방 대기 중...";
+      var btn = document.getElementById("confirmGiveBtn");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "✅ 선물 확정 완료! 상대방 대기 중...";
+      }
 
       checkAndFinalizeTrade();
     });
-  }
 
-  const $rcConfirm = document.getElementById("receiveConfirmBtn");
-  if ($rcConfirm) {
-    $rcConfirm.addEventListener("click", () => {
-      const $receiveModal = document.getElementById("receiveModal");
+    // [핵심] 카드 수령 확인 모달에서 '다음 턴으로' 클릭 시
+    on("receiveConfirmBtn", "click", function () {
+      var $receiveModal = document.getElementById("receiveModal");
       if ($receiveModal) $receiveModal.classList.remove("show");
 
-      state.currentTurn++;
-      publishToPair("ADVANCE_NEXT_TURN", { turn: state.currentTurn });
-
-      if (state.currentTurn <= state.totalTurns) {
-        switchView(1);
-      } else {
-        switchView(4);
+      if (state.currentTurn >= state.totalTurns) {
+        switchView(4, false);
+        return;
       }
-    });
-  }
 
-  const $btnRestartGame = document.getElementById("btnRestartGame");
-  if ($btnRestartGame) {
-    $btnRestartGame.addEventListener("click", () => {
+      // 전용 매칭 대기 페이지(999)로 이동하여 다른 참가자 완료 대기
+      showMatchingWaitPage("NEXT_TURN", state.currentTurn + 1);
+
+      // 서버에 이번 턴 교환 완료 전송 -> 두 사람 모두 누르는 즉시 서버가 새 상대방과 2턴을 시작!
+      brokerClient.sendRaw({
+        action: "COMPLETE_TURN",
+        roomCode: state.roomCode,
+        playerId: state.myId,
+        turn: state.currentTurn
+      });
+    });
+
+    on("btnRestartGame", "click", function () {
+      clearSession();
       location.reload();
     });
-  }
 
-  const $dlBtn = document.getElementById("downloadReportBtn");
-  if ($dlBtn) {
-    $dlBtn.addEventListener("click", () => {
-      const life = document.getElementById("finalLifeExp") ? document.getElementById("finalLifeExp").textContent : "85세";
-      const values = state.hand.filter(c => c.type === "VALUE").map(c => `${c.name}(${c.category})`).join(", ");
-      const persona = document.getElementById("personaTitle") ? document.getElementById("personaTitle").textContent : "";
-      const tag = document.getElementById("personaTag") ? document.getElementById("personaTag").textContent : "";
+    on("downloadReportBtn", "click", function () {
+      var life = document.getElementById("finalLifeExp") ? document.getElementById("finalLifeExp").textContent : "85세";
+      var values = state.hand.filter(function (c) { return c.type === "VALUE"; }).map(function (c) { return c.name + "(" + c.category + ")"; }).join(", ");
+      var persona = document.getElementById("personaTitle") ? document.getElementById("personaTitle").textContent : "";
+      var tag = document.getElementById("personaTag") ? document.getElementById("personaTag").textContent : "";
 
-      const q1 = document.getElementById("reflectQ1") ? document.getElementById("reflectQ1").value.trim() : "";
-      const q2 = document.getElementById("reflectQ2") ? document.getElementById("reflectQ2").value.trim() : "";
-      const q3 = document.getElementById("reflectQ3") ? document.getElementById("reflectQ3").value.trim() : "";
+      var q1 = document.getElementById("reflectQ1") ? document.getElementById("reflectQ1").value.trim() : "";
+      var q2 = document.getElementById("reflectQ2") ? document.getElementById("reflectQ2").value.trim() : "";
+      var q3 = document.getElementById("reflectQ3") ? document.getElementById("reflectQ3").value.trim() : "";
 
-      const content = `========================================================
-🃏 메이플라이 빅게임 · 인생 가치관 디브리핑 리포트
-========================================================
-- 플레이어: ${state.nickname}
-- 나의 인생 유형: ${tag} ${persona}
-- 최종 기대수명: ${life}
-- 수집한 핵심 가치관: ${values}
+      var historyText = state.turnHistory.map(function (h) {
+        return "* " + h.turn + "턴 (" + h.partner + " 님): [" + h.gave + "] 선물 ➔ [" + h.received + "] 수령";
+      }).join("\n");
 
-[📜 5턴 실시간 교환 여정 기록]
-${state.turnHistory.map(h => `* ${h.turn}턴 (${h.partner} 님): [${h.gave}] 선물 ➔ [${h.received}] 수령`).join('\n')}
+      var content = "========================================================\n" +
+        "🃏 메이플라이 빅게임 · 인생 가치관 디브리핑 리포트\n" +
+        "========================================================\n" +
+        "- 플레이어: " + state.nickname + "\n" +
+        "- 나의 인생 유형: " + tag + " " + persona + "\n" +
+        "- 최종 기대수명: " + life + "\n" +
+        "- 수집한 핵심 가치관: " + values + "\n\n" +
+        "[📜 5턴 실시간 교환 여정 기록]\n" +
+        historyText + "\n\n" +
+        "--------------------------------------------------------\n" +
+        "✍️ 나를 찾는 3문 3답 성찰 질문 답변\n" +
+        "--------------------------------------------------------\n" +
+        "Q1. 끝까지 지켜내고 싶었던 나만의 핵심 가치관은 무엇이었나요?\n" +
+        "답변: " + (q1 || "(작성 내용 없음)") + "\n\n" +
+        "Q2. 상대방과의 대화 및 카드 교환 중 가장 인상 깊었던 순간은?\n" +
+        "답변: " + (q2 || "(작성 내용 없음)") + "\n\n" +
+        "Q3. 앞으로의 일상에서 이 가치관들을 어떻게 실천하고 싶나요?\n" +
+        "답변: " + (q3 || "(작성 내용 없음)") + "\n" +
+        "========================================================\n" +
+        "발급일시: " + new Date().toLocaleString("ko-KR") + "\n";
 
---------------------------------------------------------
-✍️ 나를 찾는 3문 3답 성찰 질문 답변
---------------------------------------------------------
-Q1. 끝까지 지켜내고 싶었던 나만의 핵심 가치관은 무엇이었나요?
-답변: ${q1 || '(작성 내용 없음)'}
+      if (supabaseClient) {
+        supabaseClient
+          .from("debriefings")
+          .insert([{
+            nickname: state.nickname,
+            room_code: state.roomCode || "practice",
+            persona_tag: tag,
+            persona_title: persona,
+            final_life: parseInt(life, 10) || 85,
+            final_deck: state.hand,
+            trade_history: state.turnHistory,
+            q1_answer: q1,
+            q2_answer: q2,
+            q3_answer: q3,
+            reflection_text: "Q1: " + q1 + " | Q2: " + q2 + " | Q3: " + q3
+          }])
+          .then(function () {})
+          .catch(function () {});
+      }
 
-Q2. 상대방과의 대화 및 카드 교환 중 가장 인상 깊었던 순간은?
-답변: ${q2 || '(작성 내용 없음)'}
-
-Q3. 앞으로의 일상에서 이 가치관들을 어떻게 실천하고 싶나요?
-답변: ${q3 || '(작성 내용 없음)'}
-========================================================
-발급일시: ${new Date().toLocaleString('ko-KR')}
-`;
-      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
+      var blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
       a.href = url;
-      a.download = `가치관_디브리핑_${state.nickname}.txt`;
+      a.download = "가치관_디브리핑_" + state.nickname + ".txt";
       a.click();
-      showToast("성찰 리포트가 저장되었습니다!");
+      showToast("성찰 리포트가 저장되었습니다! ✨");
     });
-  }
 
-  const $detailClose = document.getElementById("detailClose");
-  if ($detailClose) {
-    $detailClose.addEventListener("click", () => {
-      const $detailModal = document.getElementById("detailModal");
+    on("detailClose", "click", function () {
+      var $detailModal = document.getElementById("detailModal");
       if ($detailModal) $detailModal.classList.remove("show");
     });
+
+    // 새로고침(F5) 시 세션 복원
+    if (savedSession && savedSession.roomCode) {
+      var nickInput = document.getElementById("nicknameInput");
+      if (nickInput) nickInput.value = state.nickname;
+      var nickDisp = document.getElementById("myNickDisplay");
+      if (nickDisp) nickDisp.textContent = state.nickname;
+
+      brokerClient.subscribe("/topic/room/" + state.roomCode, handleRoomTopicMessage);
+      if (state.pairId) {
+        activePairTopic = "/topic/pair/" + state.roomCode + "_" + state.pairId;
+        brokerClient.subscribe(activePairTopic, handlePairGameEvent);
+      }
+
+      if (state.currentPhase === 0) {
+        openWaitingRoomUi(state.roomCode);
+        renderMemberList();
+      } else if (state.currentPhase === 999 || state.isSittingOut) {
+        showMatchingWaitPage(state.waitingMode, state.currentTurn);
+      } else {
+        switchView(state.currentPhase, true);
+        if (state.partnerName) {
+          var pNameEl = document.getElementById("dialoguePeerName");
+          if (pNameEl) pNameEl.textContent = state.partnerName;
+        }
+      }
+    } else {
+      switchView(0, false);
+    }
+
+    console.log("🚀 [메이플라이 빅게임] v4.0 초기화 완료! (내 고유 ID: " + state.myId + ")");
   }
 
-  // 앱 시작
-  switchView(0);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeApp);
+  } else {
+    initializeApp();
+  }
 })();

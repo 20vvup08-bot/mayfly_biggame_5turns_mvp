@@ -1,14 +1,15 @@
 {
-  "name": "mayfly-websocket-messagebroker",
-  "version": "1.0.0",
-  "description": "Mayfly Card Game - WebSocket & Message Broker Server",
+  "name": "mayfly-biggame",
+  "version": "3.0.0",
+  "description": "메이플라이 실시간 1:1 매칭 & 카드 교환 가치관 빅게임",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.16.0"
+    "ws": "^8.18.0"
   },
-  "author": "박찬우",
-  "license": "ISC"
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
